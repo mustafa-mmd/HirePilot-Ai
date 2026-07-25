@@ -5,11 +5,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Haqdar | HirePilot AI",
-    template: "%s | Haqdar",
+    default: "HirePilot AI",
+    template: "%s | HirePilot AI",
   },
   description:
-    "Haqdar (HirePilot AI) — Evidence-led recruiting workflows with human decisions at every stage.",
+    "Evidence-led recruiting workflows with human decisions at every stage.",
 };
 
 export default function RootLayout({
