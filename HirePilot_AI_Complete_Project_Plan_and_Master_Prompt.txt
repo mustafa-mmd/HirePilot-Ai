@@ -1,0 +1,1376 @@
+Complete Project Plan: HirePilot AI
+
+HirePilot AI will be a multi-tenant recruitment SaaS where companies create jobs, receive applications, conduct timed assessments, monitor assessment integrity, evaluate candidates with AI, and make human-controlled hiring decisions.
+
+1. Product positioning
+
+HirePilot AI is an AI-assisted recruitment and assessment platform that helps companies evaluate candidates through CV matching, timed assessments, coding challenges, recorded video answers, integrity monitoring, and evidence-based reports.
+
+The system should assist recruiters—not automatically hire or reject candidates.
+
+2. Main users
+Company Owner
+Creates the company workspace
+Invites team members
+Manages subscriptions
+Accesses all jobs and reports
+Recruiter
+Creates jobs
+Reviews applications
+Creates assessments
+Invites candidates
+Shortlists candidates
+Schedules interviews
+Reviewer
+Reviews candidate answers
+Watches video responses
+Adds notes
+Approves or adjusts AI scores
+Candidate
+Creates an application
+Uploads CV
+Completes assessments
+Records video answers
+Checks application status
+Platform Admin
+Manages organizations
+Manages subscriptions
+Reviews reported content
+Monitors platform usage and AI costs
+3. Recommended technology stack
+Frontend
+Next.js App Router
+TypeScript
+Tailwind CSS
+shadcn/ui
+React Hook Form
+Zod
+TanStack Table
+Recharts
+Monaco Editor for coding questions
+Backend
+Next.js Route Handlers
+Server Actions where appropriate
+Node.js
+Mongoose
+MongoDB Atlas
+Zod validation
+Authentication
+Auth.js
+Email and password
+Google OAuth
+Email verification
+Password reset
+Role-based authorization
+AI services
+Gemini API
+Structured JSON output
+CV information extraction
+Job-description analysis
+Candidate matching
+Written-answer evaluation
+Interview summaries
+Media and files
+Cloudinary for:
+CV files
+Candidate photos
+Video answers
+Assessment recordings
+
+Do not store large video files directly inside MongoDB. Only save their Cloudinary URLs and metadata.
+
+Additional services
+Resend for email
+Upstash Redis for rate limiting
+BullMQ or a managed queue for background jobs
+Sentry for error monitoring
+Stripe for international subscriptions
+Docker-based sandbox or Judge0 for coding execution
+
+Never execute candidate code directly inside your main Next.js server.
+
+4. Main application modules
+Module 1: Authentication and organizations
+
+Features:
+
+Register
+Login
+Google authentication
+Verify email
+Forgot password
+Create organization
+Invite team members
+Accept invitation
+Manage roles
+Switch organizations
+Organization branding
+
+This should be a multi-tenant system. Every company must only access its own data.
+
+Module 2: Job management
+
+Recruiters can:
+
+Create, edit and archive jobs
+Generate job descriptions with AI
+Define required skills
+Add minimum experience
+Add education requirements
+Select job location and employment type
+Set application deadline
+Publish a public job page
+Copy the public application link
+Track application numbers
+
+Job statuses:
+
+Draft → Published → Paused → Closed → Archived
+Module 3: Candidate applications
+
+Application form:
+
+Full name
+Email
+Phone
+Location
+LinkedIn URL
+GitHub URL
+Portfolio URL
+Cover letter
+CV upload
+Consent checkbox
+
+After submission:
+
+CV uploads to Cloudinary.
+Background worker extracts CV text.
+AI creates a structured candidate profile.
+AI compares the CV with the job rubric.
+Recruiter receives an evidence-based report.
+Module 4: AI CV matching
+
+The report should contain:
+
+Overall match score
+Matched skills
+Missing skills
+Relevant experience
+Education match
+Important achievements
+Employment gaps requiring clarification
+AI confidence score
+Evidence from the CV
+Suggested interview questions
+
+Example score calculation:
+
+Category	Weight
+Required skills	35%
+Relevant experience	25%
+Education/certifications	10%
+Projects and achievements	15%
+Preferred skills	10%
+CV completeness	5%
+
+Recruiters should be able to change these weights.
+
+Module 5: Assessment builder
+
+Recruiters can create reusable assessment templates.
+
+Supported question types:
+
+Single-choice MCQ
+Multiple-choice MCQ
+True/false
+Short written answer
+Long written answer
+Video answer
+Audio answer
+File upload
+Coding challenge
+Practical case study
+
+Question settings:
+
+Difficulty
+Category
+Correct answer
+Explanation
+Points
+Time limit
+Preparation time
+Randomize answers
+AI evaluation rubric
+Required or optional
+Manual review requirement
+Module 6: Assessment invitation
+
+Recruiter selects candidates and sends invitations.
+
+Invitation properties:
+
+Unique secure token
+Expiration date
+Maximum attempts
+Start deadline
+Assessment duration
+Monitoring level
+Candidate instructions
+Email reminders
+
+Invitation statuses:
+
+Invited → Opened → Started → Completed → Expired
+Module 7: Candidate assessment interface
+Before assessment
+
+The candidate completes:
+
+Email OTP verification
+Rules and privacy review
+Consent confirmation
+Camera test
+Microphone test
+Internet connection check
+Practice question
+Full-screen request
+During assessment
+
+Display:
+
+Company name
+Job title
+Candidate name
+Current question
+Progress bar
+Countdown timer
+Camera preview
+Connection indicator
+Save status
+Submit button
+
+Important behaviour:
+
+Show one question at a time
+Auto-save every few seconds
+Auto-submit when time finishes
+Restore answers after accidental refresh
+Prevent multiple active sessions
+Use server time, not only browser time
+Warn before final submission
+Allow keyboard navigation
+Provide accessibility support
+Module 8: Integrity monitoring
+
+Monitoring levels:
+
+Standard
+Timed questions
+Question randomization
+Copy/paste restrictions
+Tab-switch tracking
+Full-screen exit tracking
+Verified
+Standard features
+Camera permission
+Identity photo
+Occasional camera snapshots
+Multiple-person warnings
+Camera-disabled warnings
+Proctored
+Verified features
+Camera recording
+Microphone recording
+Optional screen recording
+Manual proctor review
+
+Record these events:
+
+Assessment started
+Question opened
+Answer saved
+Tab changed
+Full-screen exited
+Copy attempted
+Paste attempted
+Camera disabled
+Microphone disabled
+Connection lost
+Connection restored
+Multiple sessions detected
+Question submitted
+Assessment completed
+
+Integrity events should never automatically reject a candidate.
+
+Module 9: Video responses
+
+Video-question flow:
+
+Show the question.
+Start preparation timer.
+Request camera and microphone.
+Start recording.
+Show response timer.
+Allow one preview if configured.
+Upload recording.
+Save Cloudinary URL.
+Transcribe in the background.
+Generate an answer summary.
+
+Recommended defaults:
+
+Preparation: 30 seconds
+Recording: 2 minutes
+Attempts: One
+Maximum file size: Configurable
+
+Do not use facial expressions to calculate honesty, intelligence, personality or confidence.
+
+Module 10: Coding assessment
+
+Coding-question features:
+
+Monaco code editor
+Programming-language selection
+Starter code
+Visible example tests
+Hidden evaluation tests
+Run-code button
+Submit-code button
+Execution output
+Runtime and memory limits
+Automatic score
+AI code-quality review
+
+Coding evaluation:
+
+Passed tests: 60%
+Correctness and edge cases: 20%
+Code quality: 10%
+Explanation: 10%
+
+Use Judge0 or an isolated Docker service. Do not use eval() or run submitted code on your main server.
+
+Module 11: AI assessment evaluation
+
+AI evaluates written and video transcripts using a recruiter-defined rubric.
+
+Output:
+
+{
+  "score": 82,
+  "confidence": 0.88,
+  "summary": "The candidate demonstrated strong React knowledge.",
+  "strengths": [],
+  "missingPoints": [],
+  "evidence": [],
+  "followUpQuestions": [],
+  "manualReviewRequired": true
+}
+
+The AI must not score candidates based on:
+
+Gender
+Age
+Religion
+Ethnicity
+Disability
+Appearance
+Accent
+Facial expression
+Camera background
+Module 12: Recruiter dashboard
+
+Dashboard metrics:
+
+Active jobs
+Total applications
+Assessments completed
+Shortlisted candidates
+Average candidate score
+Average hiring time
+Application conversion rate
+AI processing cost
+Recruiter time saved
+
+Candidate pipeline:
+
+Applied
+→ CV Reviewed
+→ Assessment Invited
+→ Assessment Completed
+→ Shortlisted
+→ Interview
+→ Offer
+→ Hired
+→ Rejected
+
+Use a drag-and-drop Kanban board.
+
+Module 13: Candidate report
+
+Candidate report sections:
+
+Candidate information
+CV summary
+CV match report
+Assessment result
+Section scores
+Written answers
+Video responses
+Coding results
+Integrity timeline
+AI recommendation
+Recruiter notes
+Human decision
+
+Allow recruiters to override AI scores with a reason.
+
+Module 14: Email notifications
+
+Send emails for:
+
+Verify email
+Password reset
+Team invitation
+Application confirmation
+Assessment invitation
+Assessment reminder
+Assessment completion
+Interview invitation
+Application-status update
+Module 15: Subscription system
+
+Suggested plans:
+
+Feature	Free	Starter	Agency
+Active jobs	1	5	Unlimited
+Candidates/month	25	250	2,000
+Assessments	Basic	Advanced	Advanced
+Video answers	No	Yes	Yes
+Team members	1	5	25
+Custom branding	No	No	Yes
+AI reports	10	250	2,000
+5. MongoDB database design
+
+Use separate collections to prevent documents from becoming too large.
+
+users
+{
+  name,
+  email,
+  passwordHash,
+  image,
+  emailVerified,
+  globalRole,
+  createdAt,
+  updatedAt
+}
+organizations
+{
+  name,
+  slug,
+  logo,
+  website,
+  industry,
+  size,
+  branding: {
+    primaryColor,
+    secondaryColor
+  },
+  ownerId,
+  subscriptionId,
+  createdAt,
+  updatedAt
+}
+memberships
+{
+  organizationId,
+  userId,
+  role, // owner, admin, recruiter, reviewer
+  status,
+  invitedBy,
+  joinedAt
+}
+
+Create a unique compound index on:
+
+{ organizationId: 1, userId: 1 }
+jobs
+{
+  organizationId,
+  createdBy,
+  title,
+  slug,
+  description,
+  department,
+  location,
+  workplaceType,
+  employmentType,
+  experienceLevel,
+  requiredSkills: [],
+  preferredSkills: [],
+  educationRequirements: [],
+  scoringWeights: {},
+  status,
+  applicationDeadline,
+  publishedAt,
+  createdAt,
+  updatedAt
+}
+candidates
+{
+  organizationId,
+  fullName,
+  email,
+  phone,
+  location,
+  linkedinUrl,
+  githubUrl,
+  portfolioUrl,
+  profilePhotoUrl,
+  createdAt,
+  updatedAt
+}
+applications
+{
+  organizationId,
+  jobId,
+  candidateId,
+  cvUrl,
+  cvPublicId,
+  cvText,
+  coverLetter,
+  parsedProfile: {},
+  cvEvaluationId,
+  stage,
+  source,
+  consentGiven,
+  appliedAt,
+  updatedAt
+}
+assessmentTemplates
+{
+  organizationId,
+  title,
+  description,
+  instructions,
+  monitoringLevel,
+  totalDuration,
+  questionIds: [],
+  randomizationSettings: {},
+  createdBy,
+  status,
+  createdAt,
+  updatedAt
+}
+questions
+{
+  organizationId,
+  type,
+  title,
+  description,
+  category,
+  difficulty,
+  options: [],
+  correctAnswers: [],
+  points,
+  timeLimit,
+  preparationTime,
+  rubric: {},
+  codingConfig: {},
+  createdBy,
+  createdAt,
+  updatedAt
+}
+assessmentInvitations
+{
+  organizationId,
+  assessmentId,
+  applicationId,
+  candidateId,
+  tokenHash,
+  expiresAt,
+  maximumAttempts,
+  status,
+  sentAt,
+  openedAt,
+  startedAt,
+  completedAt
+}
+
+Store a hash of the invitation token, not the raw token.
+
+assessmentAttempts
+{
+  organizationId,
+  invitationId,
+  assessmentId,
+  candidateId,
+  applicationId,
+  status,
+  startedAt,
+  expiresAt,
+  submittedAt,
+  currentQuestionIndex,
+  monitoringLevel,
+  browserMetadata: {},
+  finalScore,
+  integritySummary: {},
+  createdAt,
+  updatedAt
+}
+answers
+{
+  organizationId,
+  attemptId,
+  questionId,
+  textAnswer,
+  selectedOptions: [],
+  videoUrl,
+  videoPublicId,
+  audioUrl,
+  codeAnswer,
+  language,
+  executionResults: {},
+  timeSpent,
+  submittedAt,
+  aiEvaluationId
+}
+integrityEvents
+{
+  organizationId,
+  attemptId,
+  questionId,
+  type,
+  severity,
+  metadata: {},
+  occurredAt
+}
+evaluations
+{
+  organizationId,
+  applicationId,
+  attemptId,
+  answerId,
+  evaluationType,
+  model,
+  promptVersion,
+  score,
+  confidence,
+  summary,
+  strengths: [],
+  missingPoints: [],
+  evidence: [],
+  followUpQuestions: [],
+  rawStructuredOutput: {},
+  humanReviewed,
+  reviewedBy,
+  createdAt
+}
+auditLogs
+{
+  organizationId,
+  actorId,
+  action,
+  resourceType,
+  resourceId,
+  metadata: {},
+  ipAddress,
+  createdAt
+}
+6. Important MongoDB rules
+
+Every organization-owned document must contain:
+
+organizationId
+
+Every protected query must filter using both the resource ID and organization ID:
+
+await Job.findOne({
+  _id: jobId,
+  organizationId: session.organizationId
+});
+
+Never use only:
+
+await Job.findById(jobId);
+
+Important indexes:
+
+Job: { organizationId: 1, status: 1 }
+Application: { organizationId: 1, jobId: 1, stage: 1 }
+Candidate: { organizationId: 1, email: 1 }
+Attempt: { organizationId: 1, candidateId: 1 }
+IntegrityEvent: { attemptId: 1, occurredAt: 1 }
+Evaluation: { applicationId: 1, evaluationType: 1 }
+7. Recommended application routes
+Public routes
+/
+ /pricing
+ /features
+ /jobs
+ /jobs/[organizationSlug]/[jobSlug]
+ /apply/[jobId]
+ /assessment/[token]
+ /assessment/[token]/instructions
+ /assessment/[token]/system-check
+ /assessment/[token]/attempt
+ /assessment/[token]/complete
+Authentication routes
+/login
+/register
+/verify-email
+/forgot-password
+/reset-password
+/invitations/[token]
+Recruiter routes
+/dashboard
+/dashboard/jobs
+/dashboard/jobs/new
+/dashboard/jobs/[jobId]
+/dashboard/jobs/[jobId]/applications
+/dashboard/candidates
+/dashboard/candidates/[candidateId]
+/dashboard/assessments
+/dashboard/assessments/new
+/dashboard/assessments/[assessmentId]
+/dashboard/question-bank
+/dashboard/team
+/dashboard/analytics
+/dashboard/settings
+/dashboard/billing
+Admin routes
+/admin
+/admin/organizations
+/admin/users
+/admin/subscriptions
+/admin/ai-usage
+/admin/system-health
+8. Security requirements
+Hash passwords with Argon2 or bcrypt
+Hash invitation tokens
+Validate every request with Zod
+Sanitize uploaded filenames
+Restrict accepted file formats
+Apply file-size limits
+Use signed Cloudinary uploads
+Rate-limit login, OTP and application endpoints
+Protect against IDOR attacks
+Verify organization membership on every protected request
+Store audit logs for important actions
+Encrypt sensitive configuration
+Never expose API keys to the browser
+Use HTTP-only secure cookies
+Apply Content Security Policy
+Prevent assessment timer manipulation using server timestamps
+Prevent duplicate application submissions
+Never execute candidate code in the main application
+9. Development roadmap
+Phase 1: Foundation
+
+Build:
+
+Next.js project
+TypeScript and Tailwind
+MongoDB connection
+Mongoose models
+Authentication
+Organization creation
+Membership and roles
+Dashboard layout
+Phase 2: Jobs and applications
+
+Build:
+
+Job CRUD
+Public job pages
+Application form
+CV upload
+Candidate records
+Application pipeline
+Email confirmation
+Phase 3: AI CV screening
+
+Build:
+
+CV text extraction
+Structured candidate profiles
+Job requirement extraction
+Evidence-based matching
+Configurable scoring
+Recruiter CV report
+Phase 4: Assessment builder
+
+Build:
+
+Question bank
+Assessment templates
+Question types
+Timers and scores
+Invitations
+Candidate instructions
+Phase 5: Assessment interface
+
+Build:
+
+OTP verification
+System check
+Timed questions
+Auto-save
+Auto-submit
+Full-screen mode
+Copy/paste restrictions
+Tab-switch tracking
+Connection recovery
+Phase 6: Video and coding
+
+Build:
+
+Camera recording
+Video upload
+Transcription
+Monaco Editor
+Secure coding execution
+Automatic test cases
+Phase 7: AI evaluation
+
+Build:
+
+Written-answer evaluation
+Video-transcript evaluation
+Candidate summaries
+Confidence scores
+Human review
+AI-cost tracking
+Phase 8: Commercial features
+
+Build:
+
+Subscription plans
+Usage limits
+Team invitations
+Analytics
+Custom branding
+Admin dashboard
+Production monitoring
+
+
+10. MASTER PROMPT TO START DEVELOPMENT
+
+Copy everything between MASTER PROMPT START and MASTER PROMPT END into your coding project.
+
+==================== MASTER PROMPT START ====================
+
+Act as a senior Silicon Valley SaaS architect, AI engineer, product designer,
+security engineer and full-stack Next.js developer.
+
+I want to build a production-quality multi-tenant SaaS application called
+“HirePilot AI.”
+
+PRODUCT DESCRIPTION
+
+HirePilot AI is an AI-assisted recruitment and candidate-assessment platform.
+Companies can create jobs, receive applications, analyze CVs, invite candidates
+to secure timed assessments, collect written, video and coding answers, monitor
+assessment-integrity events and review evidence-based AI evaluations.
+
+The application must assist recruiters but must never automatically make the
+final hiring or rejection decision.
+
+TECHNOLOGY STACK
+
+Use:
+
+- Next.js App Router
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+- MongoDB Atlas
+- Mongoose
+- Auth.js
+- Zod
+- React Hook Form
+- TanStack Table
+- Recharts
+- Gemini API with structured JSON outputs
+- Cloudinary for CVs, photos, audio and video
+- Resend for transactional email
+- Upstash Redis for rate limiting
+- Monaco Editor for coding questions
+- Judge0 or an isolated Docker service for code execution
+- Sentry for error monitoring
+
+Use MongoDB as the main database. Do not use PostgreSQL, Prisma, Firebase or
+Supabase.
+
+ARCHITECTURE
+
+Build the first version as a modular monolith using Next.js Route Handlers.
+Separate business logic from route handlers so that individual modules can be
+moved into services later.
+
+Use these modules:
+
+1. Authentication
+2. Organizations
+3. Memberships and roles
+4. Jobs
+5. Candidates
+6. Applications
+7. CV parsing
+8. AI CV evaluation
+9. Question bank
+10. Assessment templates
+11. Assessment invitations
+12. Assessment attempts
+13. Candidate answers
+14. Video responses
+15. Coding challenges
+16. Integrity monitoring
+17. AI answer evaluation
+18. Candidate reports
+19. Email notifications
+20. Subscriptions
+21. Analytics
+22. Audit logs
+23. Platform administration
+
+USER ROLES
+
+Support:
+
+- Platform admin
+- Organization owner
+- Organization admin
+- Recruiter
+- Reviewer
+- Candidate
+
+Implement server-side authorization. Hiding a button in the user interface is
+not authorization.
+
+MULTI-TENANCY
+
+Every organization-owned MongoDB document must have organizationId.
+
+Every protected database query must include organizationId. A company must
+never access another company’s jobs, candidates, assessments, answers, videos,
+reports or team members.
+
+Create a reusable authorization layer that checks:
+
+- Authenticated user
+- Active organization
+- Organization membership
+- Required role or permission
+- Ownership of the requested resource
+
+MONGODB COLLECTIONS
+
+Create Mongoose models for:
+
+- User
+- Organization
+- Membership
+- Invitation
+- Job
+- Candidate
+- Application
+- AssessmentTemplate
+- Question
+- AssessmentInvitation
+- AssessmentAttempt
+- Answer
+- IntegrityEvent
+- Evaluation
+- Subscription
+- Notification
+- AuditLog
+- AIUsage
+
+Use timestamps, enums, validation and appropriate compound indexes.
+
+Keep answers and integrity events in separate collections so assessment-attempt
+documents do not become too large.
+
+Do not store videos or CV binaries inside MongoDB. Store them in Cloudinary and
+save URLs, public IDs, resource types, sizes and durations in MongoDB.
+
+CORE RECRUITMENT FLOW
+
+1. Company owner creates an organization.
+2. Recruiter creates and publishes a job.
+3. Candidate opens the public job page.
+4. Candidate submits information and uploads a CV.
+5. The application is created.
+6. A background task extracts CV text.
+7. AI converts the CV into a validated structured profile.
+8. AI compares the profile with configurable job requirements.
+9. Recruiter receives a match report containing scores, evidence, missing
+   requirements, confidence and suggested questions.
+10. Recruiter reviews the report.
+11. Recruiter invites the candidate to an assessment.
+12. Candidate verifies their email using OTP.
+13. Candidate accepts the rules and privacy notice.
+14. Candidate completes camera, microphone and network checks.
+15. Candidate completes the timed assessment.
+16. The system records integrity events.
+17. Written and video answers are evaluated using defined rubrics.
+18. Coding answers are executed in a secure isolated service.
+19. Recruiter receives a complete candidate report.
+20. Recruiter makes the final human decision.
+
+ASSESSMENT QUESTION TYPES
+
+Support:
+
+- Single-choice MCQ
+- Multiple-choice MCQ
+- True/false
+- Short written answer
+- Long written answer
+- Video answer
+- Audio answer
+- File upload
+- Coding challenge
+- Practical case study
+
+Each question can contain:
+
+- Title
+- Description
+- Category
+- Difficulty
+- Points
+- Time limit
+- Preparation time
+- Options
+- Correct answers
+- Explanation
+- Evaluation rubric
+- Randomization setting
+- Manual-review requirement
+- Coding configuration
+
+ASSESSMENT TIMER
+
+Use server timestamps as the source of truth.
+
+Do not trust a browser-only countdown.
+
+When an attempt begins, store:
+
+- startedAt
+- expiresAt
+- currentQuestionIndex
+- status
+
+The browser can display the countdown, but the server must validate whether the
+attempt or question has expired.
+
+Auto-save candidate answers. Support recovery after refresh or temporary
+connection loss. Automatically submit an answer when its time expires.
+
+INTEGRITY MONITORING
+
+Support three monitoring levels:
+
+STANDARD:
+- Timed questions
+- Randomized questions and choices
+- Copy/paste attempt logging
+- Tab-switch logging
+- Full-screen exit logging
+
+VERIFIED:
+- All Standard features
+- Camera permission
+- Candidate identity photo
+- Occasional snapshots
+- Camera-disabled events
+- Multiple-person warning events
+
+PROCTORED:
+- All Verified features
+- Camera and microphone recording
+- Optional screen recording
+- Manual proctor review
+
+Record events such as:
+
+- attempt_started
+- question_opened
+- answer_saved
+- copy_attempted
+- paste_attempted
+- tab_hidden
+- fullscreen_exited
+- camera_disabled
+- microphone_disabled
+- connection_lost
+- connection_restored
+- multiple_session_detected
+- question_submitted
+- assessment_completed
+
+Integrity events must never automatically reject a candidate. Present them to
+the recruiter for human review.
+
+PRIVACY AND FAIRNESS
+
+Display clear consent before activating a camera, microphone or recording.
+
+Explain:
+
+- What is recorded
+- Why it is recorded
+- How long it is retained
+- Who can access it
+- How candidates can request accommodation
+- How candidates can challenge an AI-assisted result
+
+Never evaluate candidates based on:
+
+- Gender
+- Age
+- Religion
+- Race or ethnicity
+- Disability
+- Appearance
+- Accent
+- Facial expression
+- Camera background
+- Suspected emotions or personality derived from video
+
+AI EVALUATION
+
+Use structured output validated with Zod.
+
+Every evaluation must return:
+
+- score
+- confidence
+- summary
+- strengths
+- missingPoints
+- evidence
+- suggestedFollowUpQuestions
+- manualReviewRequired
+- rubricBreakdown
+
+Store:
+
+- Model name
+- Prompt version
+- Token usage
+- Estimated cost
+- Evaluation timestamp
+- Human-review status
+
+Do not return a score without evidence.
+
+CODING ASSESSMENT
+
+Use Monaco Editor.
+
+Allow:
+
+- Starter code
+- Programming-language selection
+- Example test cases
+- Hidden test cases
+- Run code
+- Submit code
+- Runtime limit
+- Memory limit
+- Execution output
+
+Never execute candidate code using eval(), child_process or the main Next.js
+server. Use Judge0 or a separately isolated Docker execution service.
+
+RECRUITER DASHBOARD
+
+Create:
+
+- Overview dashboard
+- Job-management pages
+- Application pipeline
+- Candidate table
+- Candidate profile
+- Assessment builder
+- Question bank
+- Invitation manager
+- Candidate report
+- Analytics
+- Team management
+- Organization settings
+- Billing and usage
+
+Candidate stages:
+
+- applied
+- cv_reviewed
+- assessment_invited
+- assessment_in_progress
+- assessment_completed
+- shortlisted
+- interview
+- offer
+- hired
+- rejected
+
+Create a drag-and-drop Kanban pipeline with server-side validation.
+
+CANDIDATE REPORT
+
+Show:
+
+- Candidate information
+- CV summary
+- CV match score and evidence
+- Assessment total score
+- Section scores
+- Written answers
+- Video answers and transcripts
+- Coding execution results
+- AI evaluation
+- Integrity timeline
+- Recruiter notes
+- Human decision
+
+Allow authorized recruiters to override an AI score, but require an explanation
+and store the action in AuditLog.
+
+SECURITY
+
+Implement:
+
+- Zod validation
+- Password hashing
+- Hashed invitation tokens
+- Secure HTTP-only cookies
+- Signed upload requests
+- File-type and size validation
+- Rate limiting
+- CSRF protection where applicable
+- IDOR protection
+- Server-side role authorization
+- Organization isolation
+- Audit logging
+- Content Security Policy
+- Secure environment-variable handling
+- Duplicate-submission prevention
+- Expiring assessment links
+- Maximum-attempt enforcement
+
+Never expose service secrets in client components.
+
+DEVELOPMENT QUALITY
+
+Use:
+
+- Strict TypeScript
+- Reusable components
+- Feature-based modules
+- Consistent API response structure
+- Central error handling
+- Loading, error and empty states
+- Accessible form labels
+- Responsive layouts
+- Skeleton loaders
+- Toast notifications
+- Pagination
+- Search and filters
+- Meaningful comments only
+- No placeholder business logic in completed features
+
+Write unit tests for scoring, authorization and timer logic. Write integration
+tests for protected API routes. Add end-to-end tests for the primary recruiter
+and candidate flows.
+
+ENVIRONMENT VARIABLES
+
+Prepare an .env.example containing variable names only for:
+
+- MONGODB_URI
+- AUTH_SECRET
+- AUTH_GOOGLE_ID
+- AUTH_GOOGLE_SECRET
+- GEMINI_API_KEY
+- GEMINI_MODEL=gemini-2.5-flash
+- CLOUDINARY_CLOUD_NAME
+- CLOUDINARY_API_KEY
+- CLOUDINARY_API_SECRET
+- RESEND_API_KEY
+- EMAIL_FROM
+- UPSTASH_REDIS_REST_URL
+- UPSTASH_REDIS_REST_TOKEN
+- JUDGE0_API_URL
+- JUDGE0_API_KEY
+- SENTRY_DSN
+- NEXT_PUBLIC_APP_URL
+
+WORKING METHOD
+
+Do not attempt to build the entire project in one response.
+
+First:
+
+1. Inspect the existing repository.
+2. Explain the proposed architecture.
+3. Create a phased implementation checklist.
+4. Identify existing files that will be changed.
+5. Start only with Phase 1 after presenting the plan.
+
+Phase 1 must include:
+
+- Project foundation
+- Folder structure
+- MongoDB connection
+- Mongoose base conventions
+- Authentication
+- Organization creation
+- Membership roles
+- Protected dashboard
+- Server-side authorization helpers
+
+For each phase:
+
+1. List the goal.
+2. List files to create or modify.
+3. Implement complete working code.
+4. Validate TypeScript.
+5. Run linting.
+6. Run relevant tests.
+7. Explain environment variables.
+8. Report remaining issues.
+9. Wait for me to say “continue” before starting the next major phase.
+
+Do not remove existing working functionality without explaining why.
+Do not use fake API results when real integration is requested.
+Do not expose secrets.
+Do not skip server-side authorization.
+Do not claim success without running available validation commands.
+
+Now inspect the project, present the architecture and implementation checklist,
+and then begin Phase 1.
+
+===================== MASTER PROMPT END =====================
+
+
+11. HOW TO USE THIS FILE
+
+1. Create a new ChatGPT or Codex coding project.
+2. Paste the Master Prompt into the project instructions.
+3. Connect or upload your repository.
+4. Send this first task:
+
+Start Phase 1. Build the project foundation, MongoDB connection,
+authentication, organizations, memberships and protected dashboard.
+
+5. Complete and test each phase separately.
+6. Say “continue” only after reviewing the current phase.

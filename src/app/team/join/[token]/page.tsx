@@ -1,0 +1,3 @@
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AcceptInvitation } from "@/modules/team/accept-invitation";
+export default async function JoinTeamPage({ params }: { params: Promise<{ token: string }> }) { const { token } = await params; return <main className="flex min-h-screen items-center justify-center bg-muted/20 p-4"><Card className="w-full max-w-md"><CardHeader><CardTitle>Join your HirePilot team</CardTitle><CardDescription>Sign in with the invited email address, then accept this secure invitation.</CardDescription></CardHeader><CardContent><AcceptInvitation token={token} /></CardContent></Card></main>; }

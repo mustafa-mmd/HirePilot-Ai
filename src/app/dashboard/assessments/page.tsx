@@ -1,0 +1,14 @@
+import { ClipboardList, Library, Plus, Send } from "lucide-react";
+import Link from "next/link";
+
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireOrganizationContext } from "@/modules/authorization/service";
+import { listAssessmentTemplates } from "@/modules/assessments/template-service";
+
+export default async function AssessmentsPage() {
+  const context = await requireOrganizationContext("assessments:read");
+  const templates = await listAssessmentTemplates(context);
+  return <div className="space-y-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="font-mono text-xs uppercase tracking-[.2em] text-muted-foreground">Assessment builder</p><h1 className="mt-2 text-3xl font-semibold">Assessments</h1><p className="mt-2 text-muted-foreground">Create reusable timed assessments from your organization’s question bank.</p></div><div className="flex flex-wrap gap-2"><Link className={buttonVariants({ variant: "outline" })} href="/dashboard/assessments/questions"><Library />Question bank</Link><Link className={buttonVariants({ variant: "outline" })} href="/dashboard/assessments/invitations"><Send />Invitations</Link><Link className={buttonVariants()} href="/dashboard/assessments/new"><Plus />New assessment</Link></div></div>{templates.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{templates.map((template) => <Link href={`/dashboard/assessments/${template.id}`} key={template.id}><Card className="h-full transition-colors hover:border-primary/50"><CardHeader><div className="flex items-start justify-between gap-3"><ClipboardList className="size-5 text-primary" /><Badge className="capitalize" variant={template.status === "published" ? "default" : "secondary"}>{template.status}</Badge></div><CardTitle className="pt-3">{template.title}</CardTitle><CardDescription>{template.description}</CardDescription></CardHeader><CardContent><div className="grid grid-cols-3 gap-3 text-xs text-muted-foreground"><span><strong className="block font-mono text-base text-foreground">{template.questionIds.length}</strong>Questions</span><span><strong className="block font-mono text-base text-foreground">{template.totalPoints}</strong>Points</span><span><strong className="block font-mono text-base text-foreground">{template.totalDuration}</strong>Minutes</span></div></CardContent></Card></Link>)}</div> : <Card className="border-dashed"><CardContent className="flex min-h-64 flex-col items-center justify-center text-center"><ClipboardList className="size-9 text-muted-foreground" /><h2 className="mt-4 font-medium">No assessments yet</h2><p className="mt-2 max-w-md text-sm text-muted-foreground">Build a question bank, then combine questions into a reusable assessment template.</p></CardContent></Card>}</div>;
+}

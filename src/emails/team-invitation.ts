@@ -1,0 +1,4 @@
+function escapeHtml(value: string) { return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character); }
+export function teamInvitationHtml(data: { inviterName: string; organizationName: string; role: string; acceptUrl: string }) {
+  return `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;color:#18181b"><h1>Join ${escapeHtml(data.organizationName)}</h1><p>${escapeHtml(data.inviterName)} invited you to join as <strong>${escapeHtml(data.role)}</strong>.</p><p><a href="${escapeHtml(data.acceptUrl)}" style="display:inline-block;background:#7c3aed;color:white;padding:12px 18px;border-radius:6px;text-decoration:none">Accept invitation</a></p><p>This secure invitation expires in seven days. Sign in using the invited email address.</p></div>`;
+}

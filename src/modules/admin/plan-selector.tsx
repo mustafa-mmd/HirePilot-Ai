@@ -1,0 +1,5 @@
+"use client";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+export function PlanSelector({ organizationId, plan }: { organizationId: string; plan: string }) { const router = useRouter(); const [busy, setBusy] = useState(false); async function change(value: string) { setBusy(true); try { const response = await fetch(`/api/admin/organizations/${organizationId}/plan`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan: value }) }); if (!response.ok) throw new Error(); router.refresh(); } finally { setBusy(false); } } return <Select value={plan} disabled={busy} onValueChange={(value) => void change(value)}><SelectTrigger className="w-32"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="starter">Starter</SelectItem><SelectItem value="growth">Growth</SelectItem><SelectItem value="business">Business</SelectItem></SelectContent></Select>; }

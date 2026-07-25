@@ -1,0 +1,13 @@
+import { Clock3, Plus } from "lucide-react";
+import Link from "next/link";
+
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireOrganizationContext } from "@/modules/authorization/service";
+import { listQuestions } from "@/modules/assessments/question-service";
+
+export default async function QuestionBankPage({ searchParams }: { searchParams: Promise<{ search?: string }> }) {
+  const context = await requireOrganizationContext("assessments:read"); const search = (await searchParams).search ?? ""; const questions = await listQuestions(context, search);
+  return <div className="space-y-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="font-mono text-xs uppercase tracking-[.2em] text-muted-foreground">Reusable content</p><h1 className="mt-2 text-3xl font-semibold">Question bank</h1><p className="mt-2 text-muted-foreground">Create scored questions with timers, rubrics, and review rules.</p></div><div className="flex gap-2"><Link className={buttonVariants({ variant: "outline" })} href="/dashboard/assessments">Assessments</Link><Link className={buttonVariants()} href="/dashboard/assessments/questions/new"><Plus />New question</Link></div></div><form className="max-w-md"><input name="search" defaultValue={search} className="h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" placeholder="Search title or category" /></form>{questions.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{questions.map((question) => <Link href={`/dashboard/assessments/questions/${question.id}`} key={question.id}><Card className="h-full transition-colors hover:border-primary/50"><CardHeader><div className="flex items-center justify-between gap-3"><Badge variant="secondary">{question.typeLabel}</Badge><Badge className="capitalize" variant="outline">{question.difficulty}</Badge></div><CardTitle className="pt-3 text-lg">{question.title}</CardTitle><CardDescription className="line-clamp-2">{question.description}</CardDescription></CardHeader><CardContent><div className="flex items-center justify-between text-xs text-muted-foreground"><span>{question.category}</span><span className="flex items-center gap-1 font-mono"><Clock3 className="size-3" />{question.timeLimit}s · {question.points} pts</span></div></CardContent></Card></Link>)}</div> : <Card className="border-dashed"><CardContent className="flex min-h-56 items-center justify-center text-sm text-muted-foreground">No questions match this view.</CardContent></Card>}</div>;
+}
