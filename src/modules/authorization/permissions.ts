@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   "jobs:manage",
   "candidates:read",
   "candidates:review",
+  "candidates:manage",
   "assessments:read",
   "assessments:manage",
   "billing:manage",

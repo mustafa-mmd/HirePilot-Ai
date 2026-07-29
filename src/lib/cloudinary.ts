@@ -77,9 +77,32 @@ export async function verifyCvAsset(jobId: string, asset: CvAssetInput) {
   return { ...asset, format: format as CvAssetInput["format"], bytes: resource.bytes, url: resource.secure_url };
 }
 
-export async function deleteCvAsset(publicId: string) {
-  const { client } = getCloudinary();
-  await client.uploader.destroy(publicId, { resource_type: "raw", invalidate: true }).catch(() => undefined);
+export type CloudinaryResourceType = "image" | "video" | "raw";
+
+export async function deleteCloudinaryAsset(
+  publicId: string,
+  resourceType: CloudinaryResourceType,
+) {
+  try {
+    const { client } = getCloudinary();
+    await client.uploader.destroy(publicId, {
+      resource_type: resourceType,
+      invalidate: true,
+    });
+  } catch (error) {
+    console.error("Failed to delete Cloudinary asset", {
+      publicId,
+      resourceType,
+      error,
+    });
+  }
+}
+
+export async function deleteCvAsset(
+  publicId: string,
+  resourceType: Extract<CloudinaryResourceType, "raw" | "image"> = "raw",
+) {
+  await deleteCloudinaryAsset(publicId, resourceType);
 }
 
 function assessmentResourceType(kind: AssessmentMediaKind) {
