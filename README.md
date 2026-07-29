@@ -29,7 +29,7 @@ Next.js application
   +--> MongoDB Atlas
   +--> Gemini API
   +--> Cloudinary
-  +--> Resend
+  +--> SMTP email (Gmail by default)
   +--> Upstash Redis
   +--> Judge0
   +--> Sentry
@@ -46,7 +46,7 @@ Install:
 - A MongoDB Atlas cluster or another MongoDB replica set
 - Git, if you are cloning the repository
 
-The external integrations are described in [Environment variables](#environment-variables). For the complete product flow, configure MongoDB, Gemini, Cloudinary, Resend, Upstash, and Judge0.
+The external integrations are described in [Environment variables](#environment-variables). For the complete product flow, configure MongoDB, Gemini, Cloudinary, SMTP email, Upstash, and Judge0.
 
 ### 2. Open the project
 
@@ -144,7 +144,7 @@ For a Vercel deployment, add every required value under Project Settings -> Envi
 | AI | Google Gemini through `@google/genai` | CV parsing, job requirements, matching, answer evaluation, summaries, and transcription |
 | Document extraction | unpdf, mammoth, word-extractor | PDF, DOCX, and DOC CV extraction |
 | Media storage | Cloudinary | Signed CV, image, audio, video, and assessment uploads |
-| Email | Resend | Confirmations, invitations, reminders, OTPs, and team invitations |
+| Email | Nodemailer over SMTP | Confirmations, invitations, reminders, OTPs, and team invitations |
 | Rate limiting | Upstash Redis and `@upstash/ratelimit` | Auth, application, AI, and candidate request limits |
 | Code execution | Monaco Editor and Judge0 | Candidate code editing and isolated execution against hidden tests |
 | Tables and drag/drop | TanStack Table and dnd-kit | Candidate tables, builders, and pipeline interactions |
@@ -199,7 +199,7 @@ src/
 - `coding`: Judge0 execution and hidden-test evaluation
 - `jobs`: job CRUD, publishing, public listings, and scoring weights
 - `media`: recording types and Gemini transcription
-- `notifications`: Resend delivery and notification state
+- `notifications`: SMTP delivery and notification state
 - `organizations`: workspace creation and settings
 - `reports`: AI assessment evaluation, overrides, notes, and decisions
 - `subscriptions`: plan definitions, usage, and enforceable limits
@@ -232,7 +232,7 @@ The proxy redirects unauthenticated navigation, but it is not the only security 
 6. Run Gemini CV analysis and inspect evidence, score, confidence, missing points, and follow-up questions.
 7. Move applications through the audited Kanban pipeline.
 8. Build reusable questions and publish immutable assessment templates.
-9. Invite candidates and send reminders through Resend.
+9. Invite candidates and send reminders through SMTP email.
 10. Evaluate written, media, and coding answers.
 11. Review transcripts, coding results, integrity signals, and evidence-backed AI evaluations.
 12. Override a score only with a written reason and make the final human decision.
@@ -244,7 +244,7 @@ The proxy redirects unauthenticated navigation, but it is not the only security 
 3. The browser uploads the CV directly to Cloudinary using a short-lived server signature.
 4. The backend verifies the Cloudinary asset, type, size, ownership, and file signature.
 5. The application is created transactionally and duplicate submissions are blocked.
-6. Resend sends an application confirmation.
+6. The configured SMTP account sends an application confirmation.
 
 ### Candidate assessment flow
 
@@ -286,8 +286,12 @@ Real secrets belong in `.env.local` for local development and in the hosting pro
 | `CLOUDINARY_CLOUD_NAME` | Uploads | Cloudinary product-environment cloud name |
 | `CLOUDINARY_API_KEY` | Uploads | Cloudinary API key |
 | `CLOUDINARY_API_SECRET` | Uploads | Server-only Cloudinary signing secret |
-| `RESEND_API_KEY` | Email flows | Resend API key |
-| `EMAIL_FROM` | Email flows | Sender such as `HirePilot <notifications@example.com>` from a verified domain |
+| `SMTP_HOST` | Email flows | SMTP server; use `smtp.gmail.com` for Gmail |
+| `SMTP_PORT` | Email flows | SMTP port; use `465` for Gmail with implicit TLS |
+| `SMTP_SECURE` | Email flows | `true` for port 465; use `false` for STARTTLS on port 587 |
+| `SMTP_USER` | Email flows | Gmail address or SMTP username used to send mail |
+| `SMTP_PASS` | Email flows | Gmail App Password or SMTP password; never use your normal account password |
+| `EMAIL_FROM` | No | Display sender; defaults to `HirePilot AI <SMTP_USER>` |
 | `UPSTASH_REDIS_REST_URL` | Production | HTTPS Upstash Redis REST endpoint |
 | `UPSTASH_REDIS_REST_TOKEN` | Production | Server-only Upstash standard REST token |
 | `JUDGE0_API_URL` | Coding questions | Base URL of a secured Judge0 deployment, without `/submissions` |
@@ -308,7 +312,11 @@ GEMINI_MODEL=gemini-2.5-flash
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
-RESEND_API_KEY=
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=
+SMTP_PASS=
 EMAIL_FROM=
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
@@ -429,9 +437,33 @@ Set `GEMINI_API_KEY` in `.env.local`, keep `GEMINI_MODEL=gemini-2.5-flash`, and 
 
 Check all three Cloudinary variables. The API key and API secret must belong to the same Cloudinary product environment as the cloud name.
 
+### Configure free Gmail SMTP email
+
+Gmail SMTP can deliver HirePilot invitations, reminders, confirmations, and OTPs to different Gmail, Outlook, Yahoo, or other email accounts without requiring a custom domain.
+
+1. Use a dedicated Gmail account for HirePilot instead of a personal inbox.
+2. Enable 2-Step Verification on that Google account.
+3. Open Google Account → Security → App passwords.
+4. Create an App Password named `HirePilot`.
+5. Copy the generated 16-character password. This is not the normal Google account password.
+6. Add the following values to `.env.local`:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=your-hirepilot-sender@gmail.com
+SMTP_PASS=your-16-character-app-password
+EMAIL_FROM="HirePilot AI <your-hirepilot-sender@gmail.com>"
+```
+
+Spaces in a Google App Password are ignored by the application. The Gmail address in `EMAIL_FROM` should match `SMTP_USER`. Restart the development server after adding the values.
+
+If the App passwords option is unavailable, confirm 2-Step Verification is enabled. Some managed work/school accounts and Advanced Protection accounts do not allow App Passwords.
+
 ### Emails remain failed
 
-Check `RESEND_API_KEY`, verify the sender domain, and ensure `EMAIL_FROM` uses that verified domain. Resend testing senders can normally send only to the account owner's address.
+Check all SMTP variables, confirm `SMTP_PASS` is an App Password, and ensure the sender address in `EMAIL_FROM` matches `SMTP_USER`. A Gmail `534` error means an App Password is required; a `535` error normally means the username or App Password is incorrect.
 
 ### Production returns `RATE_LIMIT_UNAVAILABLE`
 
@@ -447,7 +479,7 @@ Stop the server with `Ctrl+C` and run `npm.cmd run dev` again. `NEXT_PUBLIC_` va
 
 ## Development notes
 
-- The database, Gemini, Resend, Upstash, and Cloudinary clients are lazily initialized so `next build` does not require live external connections.
+- The database, Gemini, SMTP, Upstash, and Cloudinary clients are lazily initialized so `next build` does not require live external connections.
 - Server Components are the default; interactive browser features use focused Client Components.
 - API Route Handlers remain thin and delegate business logic to `src/modules`.
 - Mongoose development mode creates declared indexes automatically. Production disables automatic index creation, so production indexes must be provisioned deliberately from the model definitions.
