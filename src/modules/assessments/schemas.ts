@@ -95,8 +95,8 @@ export const assessmentInvitationInputSchema = z.object({
   const now = Date.now();
   const startDeadline = new Date(input.startDeadline).getTime();
   const expiresAt = new Date(input.expiresAt).getTime();
-  if (startDeadline <= now) context.addIssue({ code: "custom", path: ["startDeadline"], message: "The start deadline must be in the future." });
-  if (expiresAt < startDeadline) context.addIssue({ code: "custom", path: ["expiresAt"], message: "Expiration cannot be before the start deadline." });
+  if (startDeadline <= now) context.addIssue({ code: "custom", path: ["startDeadline"], message: "The assessment start time must be in the future." });
+  if (expiresAt <= startDeadline) context.addIssue({ code: "custom", path: ["expiresAt"], message: "The assessment end time must be after the start time." });
 });
 
 export type QuestionInput = z.infer<typeof questionInputSchema>;

@@ -23,6 +23,7 @@ export interface IAssessmentInvitation {
   startedAt?: Date;
   completedAt?: Date;
   cancelledAt?: Date;
+  archivedAt?: Date;
   lastReminderSentAt?: Date;
   reminderCount: number;
   otpHash?: string;
@@ -54,6 +55,7 @@ const assessmentInvitationSchema = new Schema<IAssessmentInvitation>({
   startedAt: { type: Date },
   completedAt: { type: Date },
   cancelledAt: { type: Date },
+  archivedAt: { type: Date },
   lastReminderSentAt: { type: Date },
   reminderCount: { type: Number, required: true, min: 0, default: 0 },
   otpHash: { type: String, select: false, minlength: 64, maxlength: 64 },

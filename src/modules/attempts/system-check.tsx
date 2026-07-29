@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, CheckCircle2, Mic, Network } from "lucide-react";
 
@@ -10,10 +10,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { MonitoringLevel } from "@/modules/assessments/constants";
+import { getAssessmentInvitationWindowState } from "@/modules/assessments/invitation-window";
 
 function sessionStorageKey(token: string) { return `hirepilot-assessment-session:${token.slice(0, 16)}`; }
 
-export function SystemCheck({ token, monitoringLevel }: { token: string; monitoringLevel: MonitoringLevel }) {
+export function SystemCheck({ token, monitoringLevel, availableFrom, expiresAt, serverNow }: { token: string; monitoringLevel: MonitoringLevel; availableFrom: string; expiresAt: string; serverNow: string }) {
   const router = useRouter();
   const needsMedia = monitoringLevel !== "standard";
   const needsRecording = monitoringLevel === "proctored";
@@ -23,6 +24,12 @@ export function SystemCheck({ token, monitoringLevel }: { token: string; monitor
   const [recording, setRecording] = useState(!needsRecording);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [now, setNow] = useState(() => Date.parse(serverNow));
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function checkMedia() {
     setError("");
@@ -48,6 +55,7 @@ export function SystemCheck({ token, monitoringLevel }: { token: string; monitor
     finally { setBusy(false); }
   }
 
-  const ready = checks.camera && checks.microphone && checks.network && privacy && monitoring && recording;
-  return <div className="space-y-6">{error && <Alert variant="destructive"><AlertTitle>Setup incomplete</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}<div className="grid gap-4 sm:grid-cols-3">{[[Camera, "Camera", checks.camera], [Mic, "Microphone", checks.microphone], [Network, "Network", checks.network]].map(([Icon, label, passed]) => { const Component = Icon as typeof Camera; return <Card key={String(label)}><CardContent className="flex items-center gap-3 pt-6"><Component className="size-5 text-primary" /><div><p className="font-medium">{String(label)}</p><p className="text-xs text-muted-foreground">{passed ? "Ready" : "Check required"}</p></div>{passed && <CheckCircle2 className="ml-auto size-4 text-primary" />}</CardContent></Card>; })}</div>{needsMedia && <Button variant="outline" className="w-full" onClick={() => void checkMedia()}>Test camera and microphone</Button>}<Card><CardHeader><CardTitle>Privacy and assessment rules</CardTitle><CardDescription>Integrity signals are evidence for human review and never automatically reject you.</CardDescription></CardHeader><CardContent className="space-y-5 text-sm"><label className="flex items-start gap-3"><Checkbox checked={privacy} onCheckedChange={(value) => setPrivacy(value === true)} /><span>I understand what is collected, why it is collected, who may access it, and that I can request accommodation or challenge an AI-assisted result.</span></label><label className="flex items-start gap-3"><Checkbox checked={monitoring} onCheckedChange={(value) => setMonitoring(value === true)} /><span>I consent to {monitoringLevel} integrity monitoring, including timing, focus, clipboard, fullscreen, and connection events.</span></label>{needsRecording && <label className="flex items-start gap-3"><Checkbox checked={recording} onCheckedChange={(value) => setRecording(value === true)} /><span>I consent to camera and microphone recording for authorized human review under the organization&apos;s retention policy.</span></label>}<div><Label>Fairness notice</Label><p className="mt-1 text-muted-foreground">HirePilot does not evaluate age, gender, race, religion, disability, appearance, accent, facial expression, background, emotion, or inferred personality.</p></div><Button className="w-full" disabled={!ready || busy} onClick={() => void start()}>{busy ? "Starting securely..." : "Start timed assessment"}</Button></CardContent></Card></div>;
+  const windowState = getAssessmentInvitationWindowState(availableFrom, expiresAt, now);
+  const ready = checks.camera && checks.microphone && checks.network && privacy && monitoring && recording && windowState === "active";
+  return <div className="space-y-6">{windowState === "scheduled" ? <Alert><AlertTitle>Assessment not open yet</AlertTitle><AlertDescription>You can complete these checks now, but the Start button unlocks at {new Date(availableFrom).toLocaleString()}.</AlertDescription></Alert> : null}{windowState === "expired" ? <Alert variant="destructive"><AlertTitle>Assessment window closed</AlertTitle><AlertDescription>This invitation expired at {new Date(expiresAt).toLocaleString()}.</AlertDescription></Alert> : null}{error && <Alert variant="destructive"><AlertTitle>Setup incomplete</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}<div className="grid gap-4 sm:grid-cols-3">{[[Camera, "Camera", checks.camera], [Mic, "Microphone", checks.microphone], [Network, "Network", checks.network]].map(([Icon, label, passed]) => { const Component = Icon as typeof Camera; return <Card key={String(label)}><CardContent className="flex items-center gap-3 pt-6"><Component className="size-5 text-primary" /><div><p className="font-medium">{String(label)}</p><p className="text-xs text-muted-foreground">{passed ? "Ready" : "Check required"}</p></div>{passed && <CheckCircle2 className="ml-auto size-4 text-primary" />}</CardContent></Card>; })}</div>{needsMedia && <Button variant="outline" className="w-full" onClick={() => void checkMedia()}>Test camera and microphone</Button>}<Card><CardHeader><CardTitle>Privacy and assessment rules</CardTitle><CardDescription>Integrity signals are evidence for human review and never automatically reject you.</CardDescription></CardHeader><CardContent className="space-y-5 text-sm"><label className="flex items-start gap-3"><Checkbox checked={privacy} onCheckedChange={(value) => setPrivacy(value === true)} /><span>I understand what is collected, why it is collected, who may access it, and that I can request accommodation or challenge an AI-assisted result.</span></label><label className="flex items-start gap-3"><Checkbox checked={monitoring} onCheckedChange={(value) => setMonitoring(value === true)} /><span>I consent to {monitoringLevel} integrity monitoring, including timing, focus, clipboard, fullscreen, and connection events.</span></label>{needsRecording && <label className="flex items-start gap-3"><Checkbox checked={recording} onCheckedChange={(value) => setRecording(value === true)} /><span>I consent to camera and microphone recording for authorized human review under the organization&apos;s retention policy.</span></label>}<div><Label>Fairness notice</Label><p className="mt-1 text-muted-foreground">HirePilot does not evaluate age, gender, race, religion, disability, appearance, accent, facial expression, background, emotion, or inferred personality.</p></div><Button className="w-full" disabled={!ready || busy} onClick={() => void start()}>{busy ? "Starting securely..." : windowState === "scheduled" ? "Waiting for start time" : windowState === "expired" ? "Invitation expired" : "Start timed assessment"}</Button></CardContent></Card></div>;
 }

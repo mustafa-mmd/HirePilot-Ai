@@ -7,7 +7,7 @@ import {
 
 describe("assessment invitation email", () => {
   it("escapes candidate-controlled content", () => {
-    const html = assessmentInvitationHtml({ candidateName: "<script>alert(1)</script>", assessmentTitle: "Frontend", jobTitle: "Engineer", organizationName: "Acme", assessmentUrl: "https://example.com/assessment/token", startDeadline: "July 20", duration: 30 });
+    const html = assessmentInvitationHtml({ candidateName: "<script>alert(1)</script>", assessmentTitle: "Frontend", jobTitle: "Engineer", organizationName: "Acme", assessmentUrl: "https://example.com/assessment/token", availableFrom: "July 20", expiresAt: "July 22", duration: 30 });
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
   });
@@ -19,7 +19,8 @@ describe("assessment invitation email", () => {
       jobTitle: "Engineer",
       organizationName: "Acme",
       assessmentUrl: "https://example.com/assessment/reminder-token?x=1&y=2",
-      startDeadline: "July 20",
+      availableFrom: "July 20",
+      expiresAt: "July 22",
     });
 
     expect(html).toContain("Open assessment");
@@ -27,5 +28,7 @@ describe("assessment invitation email", () => {
       "https://example.com/assessment/reminder-token?x=1&amp;y=2",
     );
     expect(html).toContain("original invitation link also remains valid");
+    expect(html).toContain("opens at");
+    expect(html).toContain("closes at");
   });
 });

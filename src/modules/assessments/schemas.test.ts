@@ -34,9 +34,14 @@ describe("assessment validation", () => {
 
   it("does not inject fields into status-only template updates", () => expect(assessmentTemplateUpdateSchema.parse({ status: "published" })).toEqual({ status: "published" }));
 
-  it("requires expiration at or after the invitation start deadline", () => {
+  it("requires the assessment end time to be after its start time", () => {
     const startDeadline = new Date(Date.now() + 3_600_000).toISOString();
     const expiresAt = new Date(Date.now() + 1_800_000).toISOString();
     expect(assessmentInvitationInputSchema.safeParse({ assessmentId: "507f1f77bcf86cd799439011", applicationId: "507f191e810c19729de860ea", startDeadline, expiresAt, maximumAttempts: 1, candidateInstructions: "Complete this assessment in one uninterrupted sitting.", remindersEnabled: true }).success).toBe(false);
+  });
+
+  it("rejects a zero-length assessment window", () => {
+    const startDeadline = new Date(Date.now() + 3_600_000).toISOString();
+    expect(assessmentInvitationInputSchema.safeParse({ assessmentId: "507f1f77bcf86cd799439011", applicationId: "507f191e810c19729de860ea", startDeadline, expiresAt: startDeadline, maximumAttempts: 1, candidateInstructions: "Complete this assessment in one uninterrupted sitting.", remindersEnabled: true }).success).toBe(false);
   });
 });

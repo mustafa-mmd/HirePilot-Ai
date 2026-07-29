@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -17,20 +17,23 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 
-export function CancelAssessmentInvitation({
+export function AssessmentInvitationRemovalAction({
   invitationId,
   candidateName,
+  status,
   disabled,
 }: {
   invitationId: string;
   candidateName: string;
+  status: string;
   disabled: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const isActive = ["invited", "opened"].includes(status);
 
-  async function cancelInvitation() {
+  async function removeInvitation() {
     setPending(true);
     setError("");
 
@@ -42,7 +45,7 @@ export function CancelAssessmentInvitation({
       const result = await response.json();
       if (!response.ok) {
         throw new Error(
-          result.error?.message ?? "The invitation could not be cancelled.",
+          result.error?.message ?? "The invitation could not be removed.",
         );
       }
       router.refresh();
@@ -50,7 +53,7 @@ export function CancelAssessmentInvitation({
       setError(
         caught instanceof Error
           ? caught.message
-          : "The invitation could not be cancelled.",
+          : "The invitation could not be removed.",
       );
       setPending(false);
     }
@@ -66,34 +69,41 @@ export function CancelAssessmentInvitation({
             variant="destructive"
             disabled={disabled || pending}
           >
-            <X aria-hidden="true" />
-            {pending ? "Cancelling..." : "Cancel"}
+            {isActive ? (
+              <X aria-hidden="true" />
+            ) : (
+              <Trash2 aria-hidden="true" />
+            )}
+            {pending ? "Removing..." : isActive ? "Cancel" : "Remove"}
           </Button>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Cancel {candidateName}&apos;s invitation?
+              {isActive ? "Cancel" : "Remove"} {candidateName}&apos;s
+              invitation?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Their assessment link and any verification code will stop working
-              immediately. Invitations for assessments already started or
-              completed cannot be cancelled.
+              {isActive
+                ? "The secure assessment link will stop working immediately and the invitation will disappear from this page."
+                : status === "completed"
+                  ? "The invitation will disappear from this page. The completed assessment, results, and security audit history will be preserved."
+                  : "The expired invitation will disappear from this page. Use Edit & reissue instead if you want to send the candidate a new secure link."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep invitation</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => void cancelInvitation()}
+              onClick={() => void removeInvitation()}
             >
-              Cancel invitation
+              {isActive ? "Cancel invitation" : "Remove from list"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       {error ? (
-        <p className="max-w-48 text-xs text-destructive">{error}</p>
+        <p className="max-w-56 text-xs text-destructive">{error}</p>
       ) : null}
     </div>
   );

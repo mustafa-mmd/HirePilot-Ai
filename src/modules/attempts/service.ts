@@ -15,6 +15,7 @@ import { IntegrityEvent } from "@/models/integrity-event.model";
 import { Question, type IQuestion } from "@/models/question.model";
 import { scoreObjectiveAnswer } from "@/modules/attempts/scoring";
 import type { IntegrityEventType } from "@/modules/assessments/constants";
+import { getAssessmentInvitationWindowState } from "@/modules/assessments/invitation-window";
 import type { AnswerInput, IntegrityEventInput, StartAttemptInput } from "@/modules/attempts/schemas";
 import { attemptExpiry, hasExpired, questionExpiry } from "@/modules/attempts/timers";
 import { requireVerifiedInvitation } from "@/modules/attempts/otp";
@@ -146,7 +147,31 @@ export async function startAssessmentAttempt(input: StartAttemptInput, ipAddress
     await assertBrowserSession(existing, input.sessionId);
     return serializeSession(existing);
   }
-  if (invitation.startDeadline <= new Date()) throw new AppError("The deadline to start this assessment has passed.", 410, "START_DEADLINE_PASSED");
+  const now = new Date();
+  const windowState = getAssessmentInvitationWindowState(
+    invitation.startDeadline,
+    invitation.expiresAt,
+    now,
+  );
+  if (windowState === "scheduled") {
+    throw new AppError(
+      `This assessment opens at ${invitation.startDeadline.toISOString()}.`,
+      409,
+      "ASSESSMENT_NOT_OPEN",
+      { availableFrom: invitation.startDeadline.toISOString() },
+    );
+  }
+  if (windowState === "expired") {
+    await AssessmentInvitation.updateOne(
+      { _id: invitation._id, organizationId: invitation.organizationId },
+      { $set: { status: "expired" } },
+    );
+    throw new AppError(
+      "This assessment invitation has expired.",
+      410,
+      "INVITATION_EXPIRED",
+    );
+  }
   if (invitation.monitoringLevel !== "standard" && (!input.systemCheck.camera || !input.systemCheck.microphone)) throw new AppError("Camera and microphone checks are required for this assessment.", 422, "SYSTEM_CHECK_REQUIRED");
   if (invitation.monitoringLevel === "proctored" && !input.consent.mediaRecording) throw new AppError("Recording consent is required for a proctored assessment.", 422, "RECORDING_CONSENT_REQUIRED");
 
@@ -158,7 +183,6 @@ export async function startAssessmentAttempt(input: StartAttemptInput, ipAddress
   if (ordered.length !== template.questionIds.length) throw new AppError("The assessment contains unavailable questions.", 409, "QUESTION_UNAVAILABLE");
   if (template.randomizationSettings.randomizeQuestionOrder) ordered = shuffle(ordered);
   if (template.randomizationSettings.questionLimit) ordered = ordered.slice(0, template.randomizationSettings.questionLimit);
-  const now = new Date();
   const priorAttempts = await AssessmentAttempt.countDocuments({ invitationId: invitation._id });
   if (priorAttempts >= invitation.maximumAttempts) throw new AppError("The maximum number of attempts has been reached.", 409, "MAXIMUM_ATTEMPTS_REACHED");
   try {

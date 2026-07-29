@@ -104,7 +104,8 @@ export async function deliverAssessmentInvitation(
     jobTitle: string;
     organizationName: string;
     assessmentUrl: string;
-    startDeadline: string;
+    availableFrom: string;
+    expiresAt: string;
     duration: number;
     email: string;
     applicationId: string;
@@ -161,7 +162,8 @@ export async function deliverAssessmentReminder(
     jobTitle: string;
     organizationName: string;
     assessmentUrl: string;
-    startDeadline: string;
+    availableFrom: string;
+    expiresAt: string;
     email: string;
     invitationId: string;
     organizationId: string;

@@ -1,6 +1,6 @@
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { assertSameOrigin, getRequestIp } from "@/lib/request-security";
-import { cancelAssessmentInvitation } from "@/modules/assessments/invitation-service";
+import { removeAssessmentInvitation } from "@/modules/assessments/invitation-service";
 import { requireOrganizationContext } from "@/modules/authorization/service";
 
 export async function DELETE(
@@ -11,7 +11,7 @@ export async function DELETE(
     assertSameOrigin(request);
     const context = await requireOrganizationContext("assessments:manage");
     return apiSuccess(
-      await cancelAssessmentInvitation(
+      await removeAssessmentInvitation(
         context,
         (await params).invitationId,
         getRequestIp(request),

@@ -6,11 +6,11 @@ vi.mock("@/modules/authorization/service", () => ({
   requireOrganizationContext: vi.fn(),
 }));
 vi.mock("@/modules/assessments/invitation-service", () => ({
-  cancelAssessmentInvitation: vi.fn(),
+  removeAssessmentInvitation: vi.fn(),
 }));
 
 import { DELETE } from "@/app/api/assessment-invitations/[invitationId]/route";
-import { cancelAssessmentInvitation } from "@/modules/assessments/invitation-service";
+import { removeAssessmentInvitation } from "@/modules/assessments/invitation-service";
 import { requireOrganizationContext } from "@/modules/authorization/service";
 
 const context = {
@@ -42,14 +42,15 @@ describe("assessment invitation cancellation route", () => {
     );
 
     expect(response.status).toBe(403);
-    expect(cancelAssessmentInvitation).not.toHaveBeenCalled();
+    expect(removeAssessmentInvitation).not.toHaveBeenCalled();
   });
 
   it("passes tenant context into cancellation", async () => {
     vi.mocked(requireOrganizationContext).mockResolvedValue(context);
-    vi.mocked(cancelAssessmentInvitation).mockResolvedValue({
+    vi.mocked(removeAssessmentInvitation).mockResolvedValue({
       id: "507f1f77bcf86cd799439013",
-      cancelled: true,
+      removed: true,
+      activeLinkCancelled: false,
     });
 
     const response = await DELETE(
@@ -68,7 +69,7 @@ describe("assessment invitation cancellation route", () => {
     expect(requireOrganizationContext).toHaveBeenCalledWith(
       "assessments:manage",
     );
-    expect(cancelAssessmentInvitation).toHaveBeenCalledWith(
+    expect(removeAssessmentInvitation).toHaveBeenCalledWith(
       context,
       "507f1f77bcf86cd799439013",
       "unknown",

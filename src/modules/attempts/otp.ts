@@ -42,7 +42,7 @@ async function invitationFromToken(token: string, withOtp = false) {
   const invitation = await query;
   if (!invitation) throw new AppError("Assessment invitation not found.", 404, "INVITATION_NOT_FOUND");
   const now = new Date();
-  if (invitation.expiresAt <= now || (["invited", "opened"].includes(invitation.status) && invitation.startDeadline <= now)) {
+  if (invitation.expiresAt <= now) {
     invitation.status = "expired";
     await invitation.save();
     throw new AppError("This assessment invitation has expired.", 410, "INVITATION_EXPIRED");
