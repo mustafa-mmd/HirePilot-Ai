@@ -34,7 +34,10 @@ function matchesHash(value: string, expected: string) {
 async function invitationFromToken(token: string, withOtp = false) {
   if (!isAssessmentInvitationToken(token)) throw new AppError("Assessment invitation not found.", 404, "INVITATION_NOT_FOUND");
   await connectToDatabase();
-  const query = AssessmentInvitation.findOne({ tokenHash: hashAssessmentInvitationToken(token) });
+  const tokenHash = hashAssessmentInvitationToken(token);
+  const query = AssessmentInvitation.findOne({
+    $or: [{ tokenHash }, { latestReminderTokenHash: tokenHash }],
+  });
   if (withOtp) query.select("+otpHash");
   const invitation = await query;
   if (!invitation) throw new AppError("Assessment invitation not found.", 404, "INVITATION_NOT_FOUND");

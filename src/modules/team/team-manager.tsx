@@ -413,8 +413,8 @@ export function TeamManager({
         <CardHeader>
           <CardTitle>Invitation history</CardTitle>
           <CardDescription>
-            Pending invitations can be cancelled. Completed and cancelled
-            records remain visible for security auditing.
+            Pending invitations can be cancelled. Cancelled records disappear
+            from this page but remain preserved in the security audit log.
           </CardDescription>
         </CardHeader>
         <CardContent>

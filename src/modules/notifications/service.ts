@@ -160,6 +160,7 @@ export async function deliverAssessmentReminder(
     assessmentTitle: string;
     jobTitle: string;
     organizationName: string;
+    assessmentUrl: string;
     startDeadline: string;
     email: string;
     invitationId: string;

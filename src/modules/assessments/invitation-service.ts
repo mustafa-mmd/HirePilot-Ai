@@ -24,7 +24,13 @@ export async function listInvitationManagerData(context: AuthorizationContext) {
   const [templates, applications, invitations] = await Promise.all([
     AssessmentTemplate.find({ organizationId: context.organizationId, status: "published" }).select("title totalDuration monitoringLevel").sort({ title: 1 }).lean(),
     Application.find({ organizationId: context.organizationId, stage: { $in: ["cv_reviewed", "assessment_invited"] } }).select("candidateId jobId stage appliedAt").sort({ appliedAt: -1 }).limit(300).lean(),
-    AssessmentInvitation.find({ organizationId: context.organizationId }).sort({ sentAt: -1 }).limit(300).lean(),
+    AssessmentInvitation.find({
+      organizationId: context.organizationId,
+      cancelledAt: { $exists: false },
+    })
+      .sort({ sentAt: -1 })
+      .limit(300)
+      .lean(),
   ]);
   const candidateIds = [...new Set(applications.map((item) => String(item.candidateId)))];
   const jobIds = [...new Set(applications.map((item) => String(item.jobId)))];
@@ -75,7 +81,7 @@ export async function createAssessmentInvitation(context: AuthorizationContext, 
     await session.withTransaction(async () => {
       const invitation = await AssessmentInvitation.findOneAndUpdate(
         { organizationId: context.organizationId, assessmentId: template._id, applicationId: application._id },
-        { $set: { candidateId: candidate._id, tokenHash: hashedToken, expiresAt: new Date(data.expiresAt), startDeadline: new Date(data.startDeadline), maximumAttempts: data.maximumAttempts, assessmentDuration: template.totalDuration, monitoringLevel: template.monitoringLevel, candidateInstructions: data.candidateInstructions, remindersEnabled: data.remindersEnabled, reminderCount: 0, otpAttempts: 0, otpRequestCount: 0, status: "invited", sentAt: new Date() }, $unset: { openedAt: 1, startedAt: 1, completedAt: 1, lastReminderSentAt: 1, otpHash: 1, otpExpiresAt: 1, otpVerifiedAt: 1 } },
+        { $set: { candidateId: candidate._id, tokenHash: hashedToken, expiresAt: new Date(data.expiresAt), startDeadline: new Date(data.startDeadline), maximumAttempts: data.maximumAttempts, assessmentDuration: template.totalDuration, monitoringLevel: template.monitoringLevel, candidateInstructions: data.candidateInstructions, remindersEnabled: data.remindersEnabled, reminderCount: 0, otpAttempts: 0, otpRequestCount: 0, status: "invited", sentAt: new Date() }, $unset: { latestReminderTokenHash: 1, openedAt: 1, startedAt: 1, completedAt: 1, cancelledAt: 1, lastReminderSentAt: 1, otpHash: 1, otpExpiresAt: 1, otpVerifiedAt: 1 } },
         { upsert: true, new: true, runValidators: true, session },
       );
       invitationId = invitation.id;
@@ -99,7 +105,10 @@ export async function createAssessmentInvitation(context: AuthorizationContext, 
 export async function getPublicAssessmentInstructions(token: string) {
   if (!isAssessmentInvitationToken(token)) throw new AppError("Assessment invitation not found.", 404, "INVITATION_NOT_FOUND");
   await connectToDatabase();
-  const invitation = await AssessmentInvitation.findOne({ tokenHash: hashAssessmentInvitationToken(token) }).select("+tokenHash");
+  const tokenHash = hashAssessmentInvitationToken(token);
+  const invitation = await AssessmentInvitation.findOne({
+    $or: [{ tokenHash }, { latestReminderTokenHash: tokenHash }],
+  }).select("+tokenHash");
   if (!invitation) throw new AppError("Assessment invitation not found.", 404, "INVITATION_NOT_FOUND");
   const now = new Date();
   if (["invited", "opened"].includes(invitation.status) && (invitation.expiresAt <= now || invitation.startDeadline <= now)) {
@@ -121,14 +130,15 @@ export async function getPublicAssessmentInstructions(token: string) {
 export async function markInvitationOpened(token: string) {
   if (!isAssessmentInvitationToken(token)) throw new AppError("Assessment invitation not found.", 404, "INVITATION_NOT_FOUND");
   await connectToDatabase();
-  const invitation = await AssessmentInvitation.findOneAndUpdate({ tokenHash: hashAssessmentInvitationToken(token), status: "invited", startDeadline: { $gt: new Date() }, expiresAt: { $gt: new Date() } }, { $set: { status: "opened", openedAt: new Date() } }, { new: true });
+  const tokenHash = hashAssessmentInvitationToken(token);
+  const invitation = await AssessmentInvitation.findOneAndUpdate({ $or: [{ tokenHash }, { latestReminderTokenHash: tokenHash }], status: "invited", startDeadline: { $gt: new Date() }, expiresAt: { $gt: new Date() } }, { $set: { status: "opened", openedAt: new Date() } }, { new: true });
   return { opened: Boolean(invitation) };
 }
 
 export async function sendAssessmentReminder(context: AuthorizationContext, invitationId: string, ipAddress?: string) {
   if (!Types.ObjectId.isValid(invitationId)) throw new AppError("Invitation not found.", 404, "INVITATION_NOT_FOUND");
   await connectToDatabase();
-  const invitation = await AssessmentInvitation.findOne({ _id: invitationId, organizationId: context.organizationId });
+  const invitation = await AssessmentInvitation.findOne({ _id: invitationId, organizationId: context.organizationId }).select("+latestReminderTokenHash");
   if (!invitation) throw new AppError("Invitation not found.", 404, "INVITATION_NOT_FOUND");
   if (!invitation.remindersEnabled) throw new AppError("Reminders are disabled for this invitation.", 409, "REMINDERS_DISABLED");
   if (!["invited", "opened"].includes(invitation.status) || invitation.startDeadline <= new Date() || invitation.expiresAt <= new Date()) throw new AppError("Only active invitations can receive reminders.", 409, "INVITATION_NOT_ACTIVE");
@@ -141,14 +151,102 @@ export async function sendAssessmentReminder(context: AuthorizationContext, invi
   const job = application ? await Job.findOne({ _id: application.jobId, organizationId: context.organizationId }).select("title") : null;
   if (!candidate || !template || !job || !organization) throw new AppError("Reminder data is incomplete.", 409, "REMINDER_DATA_INCOMPLETE");
   const nextReminder = invitation.reminderCount + 1;
+  const previousReminderTokenHash = invitation.latestReminderTokenHash;
+  const reminderToken = createAssessmentInvitationToken();
+  const assessmentUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/assessment/${reminderToken.token}`;
   const notification = await Notification.findOneAndUpdate(
     { organizationId: context.organizationId, assessmentInvitationId: invitation._id, type: "assessment_reminder" },
     { $set: { candidateId: candidate._id, applicationId: invitation.applicationId, recipient: candidate.email, status: "pending" }, $setOnInsert: { organizationId: context.organizationId, assessmentInvitationId: invitation._id, channel: "email", type: "assessment_reminder" }, $unset: { failureReason: 1, providerMessageId: 1, sentAt: 1 } },
     { upsert: true, new: true, runValidators: true },
   );
-  await deliverAssessmentReminder(notification.id, { candidateName: candidate.fullName, assessmentTitle: template.title, jobTitle: job.title, organizationName: organization.name, startDeadline: invitation.startDeadline.toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" }) + " UTC", email: candidate.email, invitationId: invitation.id, organizationId: context.organizationId, reminderNumber: nextReminder });
+  await AssessmentInvitation.updateOne(
+    { _id: invitation._id, organizationId: context.organizationId },
+    { $set: { latestReminderTokenHash: reminderToken.tokenHash } },
+  );
+  await deliverAssessmentReminder(notification.id, { candidateName: candidate.fullName, assessmentTitle: template.title, jobTitle: job.title, organizationName: organization.name, assessmentUrl, startDeadline: invitation.startDeadline.toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" }) + " UTC", email: candidate.email, invitationId: invitation.id, organizationId: context.organizationId, reminderNumber: nextReminder });
   const delivery = await Notification.findOne({ _id: notification._id, organizationId: context.organizationId }).select("status failureReason").lean();
-  if (delivery?.status === "sent") await AssessmentInvitation.updateOne({ _id: invitation._id, organizationId: context.organizationId }, { $set: { lastReminderSentAt: new Date() }, $inc: { reminderCount: 1 } });
+  if (delivery?.status === "sent") {
+    await AssessmentInvitation.updateOne({ _id: invitation._id, organizationId: context.organizationId }, { $set: { lastReminderSentAt: new Date() }, $inc: { reminderCount: 1 } });
+  } else if (previousReminderTokenHash) {
+    await AssessmentInvitation.updateOne(
+      { _id: invitation._id, organizationId: context.organizationId },
+      { $set: { latestReminderTokenHash: previousReminderTokenHash } },
+    );
+  } else {
+    await AssessmentInvitation.updateOne(
+      { _id: invitation._id, organizationId: context.organizationId },
+      { $unset: { latestReminderTokenHash: 1 } },
+    );
+  }
   await AuditLog.create({ organizationId: context.organizationId, actorId: context.userId, action: "assessment.reminder_sent", resourceType: "assessment_invitation", resourceId: invitation._id, metadata: { deliveryStatus: delivery?.status ?? "failed", reminderNumber: nextReminder }, ipAddress });
   return { deliveryStatus: delivery?.status ?? "failed", deliveryError: delivery?.failureReason };
+}
+
+export async function cancelAssessmentInvitation(
+  context: AuthorizationContext,
+  invitationId: string,
+  ipAddress?: string,
+) {
+  if (!Types.ObjectId.isValid(invitationId)) {
+    throw new AppError("Invitation not found.", 404, "INVITATION_NOT_FOUND");
+  }
+
+  await connectToDatabase();
+  const invitation = await AssessmentInvitation.findOneAndUpdate(
+    {
+      _id: invitationId,
+      organizationId: context.organizationId,
+      status: { $in: ["invited", "opened"] },
+    },
+    {
+      $set: { status: "expired", cancelledAt: new Date() },
+      $unset: {
+        latestReminderTokenHash: 1,
+        otpHash: 1,
+        otpExpiresAt: 1,
+        otpVerifiedAt: 1,
+      },
+    },
+    { new: true },
+  );
+  if (!invitation) {
+    throw new AppError(
+      "Only an invitation that has not started can be cancelled.",
+      409,
+      "INVITATION_NOT_CANCELLABLE",
+    );
+  }
+
+  const anotherActiveInvitation = await AssessmentInvitation.exists({
+    _id: { $ne: invitation._id },
+    organizationId: context.organizationId,
+    applicationId: invitation.applicationId,
+    status: { $in: ["invited", "opened", "started"] },
+  });
+  if (!anotherActiveInvitation) {
+    await Application.updateOne(
+      {
+        _id: invitation.applicationId,
+        organizationId: context.organizationId,
+        stage: "assessment_invited",
+      },
+      { $set: { stage: "cv_reviewed" } },
+    );
+  }
+
+  await AuditLog.create({
+    organizationId: context.organizationId,
+    actorId: context.userId,
+    action: "assessment.invitation_cancelled",
+    resourceType: "assessment_invitation",
+    resourceId: invitation._id,
+    metadata: {
+      assessmentId: String(invitation.assessmentId),
+      applicationId: String(invitation.applicationId),
+      candidateId: String(invitation.candidateId),
+    },
+    ipAddress,
+  });
+
+  return { id: invitationId, cancelled: true };
 }

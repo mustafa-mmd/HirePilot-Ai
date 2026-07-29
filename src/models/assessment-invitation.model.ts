@@ -9,6 +9,7 @@ export interface IAssessmentInvitation {
   applicationId: Types.ObjectId;
   candidateId: Types.ObjectId;
   tokenHash: string;
+  latestReminderTokenHash?: string;
   expiresAt: Date;
   startDeadline: Date;
   maximumAttempts: number;
@@ -21,6 +22,7 @@ export interface IAssessmentInvitation {
   openedAt?: Date;
   startedAt?: Date;
   completedAt?: Date;
+  cancelledAt?: Date;
   lastReminderSentAt?: Date;
   reminderCount: number;
   otpHash?: string;
@@ -38,6 +40,7 @@ const assessmentInvitationSchema = new Schema<IAssessmentInvitation>({
   applicationId: { type: Schema.Types.ObjectId, ref: "Application", required: true },
   candidateId: { type: Schema.Types.ObjectId, ref: "Candidate", required: true },
   tokenHash: { type: String, required: true, unique: true, select: false, minlength: 64, maxlength: 64 },
+  latestReminderTokenHash: { type: String, unique: true, sparse: true, select: false, minlength: 64, maxlength: 64 },
   expiresAt: { type: Date, required: true },
   startDeadline: { type: Date, required: true },
   maximumAttempts: { type: Number, required: true, min: 1, max: 5 },
@@ -50,6 +53,7 @@ const assessmentInvitationSchema = new Schema<IAssessmentInvitation>({
   openedAt: { type: Date },
   startedAt: { type: Date },
   completedAt: { type: Date },
+  cancelledAt: { type: Date },
   lastReminderSentAt: { type: Date },
   reminderCount: { type: Number, required: true, min: 0, default: 0 },
   otpHash: { type: String, select: false, minlength: 64, maxlength: 64 },

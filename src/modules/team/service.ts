@@ -73,7 +73,12 @@ export async function listTeam(context: AuthorizationContext) {
   await Invitation.updateMany({ organizationId: context.organizationId, status: "pending", expiresAt: { $lte: new Date() } }, { $set: { status: "expired" } });
   const [memberships, invitations] = await Promise.all([
     Membership.find({ organizationId: context.organizationId }).sort({ joinedAt: 1 }).lean(),
-    Invitation.find({ organizationId: context.organizationId }).sort({ createdAt: -1 }).lean(),
+    Invitation.find({
+      organizationId: context.organizationId,
+      status: { $ne: "revoked" },
+    })
+      .sort({ createdAt: -1 })
+      .lean(),
   ]);
   const users = await User.find({ _id: { $in: memberships.map((membership) => membership.userId) } }).select("name email image").lean();
   const userById = new Map(users.map((user) => [String(user._id), user]));
