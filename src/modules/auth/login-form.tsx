@@ -57,7 +57,11 @@ export function LoginForm({ callbackUrl, googleEnabled }: { callbackUrl: string;
           disabled={googleLoading}
           onClick={() => {
             setGoogleLoading(true);
-            signIn("google", { redirectTo: callbackUrl || "/onboarding" });
+            signIn(
+              "google",
+              { redirectTo: callbackUrl || "/onboarding" },
+              { prompt: "select_account" },
+            );
           }}
         >
           {googleLoading ? <Loader2 className="animate-spin mr-2" /> : null}

@@ -30,7 +30,7 @@ const nextConfig: NextConfig = {
               "font-src 'self' data:",
               "style-src 'self' 'unsafe-inline'",
               `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
-              "connect-src 'self' https://*.upstash.io https://api.cloudinary.com https://*.ingest.sentry.io",
+              "connect-src 'self' https://*.upstash.io https://api.cloudinary.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
               "media-src 'self' blob: https://res.cloudinary.com",
               "worker-src 'self' blob:",
               ...(process.env.NODE_ENV === "production" ? ["upgrade-insecure-requests"] : []),

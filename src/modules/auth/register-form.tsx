@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { registrationSchema, type RegistrationInput } from "@/modules/auth/schemas";
 
-export function RegisterForm() {
+export function RegisterForm({ callbackUrl }: { callbackUrl: string }) {
   const router = useRouter();
   const [error, setError] = useState<string>();
   const form = useForm<RegistrationInput>({
@@ -32,7 +32,7 @@ export function RegisterForm() {
       setError(result.error?.message ?? "Account creation failed.");
       return;
     }
-    router.push("/login?registered=1");
+    router.push(`/login?registered=1&callbackUrl=${encodeURIComponent(callbackUrl)}`);
   }
 
   return (

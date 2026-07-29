@@ -5,6 +5,7 @@ import Google from "next-auth/providers/google";
 
 import { connectToDatabase } from "@/lib/database";
 import { enforceAuthRateLimit } from "@/lib/rate-limit";
+import { getSafeInternalPath } from "@/lib/safe-redirect";
 import { User } from "@/models/user.model";
 import { credentialsSchema } from "@/modules/auth/schemas";
 
@@ -42,10 +43,7 @@ const providers: NextAuthConfig["providers"] = [
 ];
 
 if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
-  // Disable all OAuth state/PKCE checks — both are vulnerable to double-click
-  // race conditions where the second click overwrites the cookie before the
-  // first OAuth flow completes, causing state/code-verifier mismatch errors.
-  providers.push(Google({ checks: [] }));
+  providers.push(Google);
 }
 
 export const authConfig = {
@@ -130,9 +128,15 @@ export const authConfig = {
       return session;
     },
     async redirect({ url, baseUrl }) {
-      // Allow relative paths and same-origin URLs (covers callbackUrl=/admin)
-      if (url.startsWith("/")) return `${baseUrl}${url}`;
-      if (new URL(url).origin === baseUrl) return url;
+      if (url.startsWith("/")) {
+        return new URL(getSafeInternalPath(url, "/"), baseUrl).toString();
+      }
+
+      try {
+        if (new URL(url).origin === baseUrl) return url;
+      } catch {
+        // Invalid callback values fall back to the application root.
+      }
       return baseUrl;
     },
   },

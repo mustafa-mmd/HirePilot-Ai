@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getSafeInternalPath } from "@/lib/safe-redirect";
 import { LoginForm } from "@/modules/auth/login-form";
 
 export const metadata: Metadata = { title: "Sign in" };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ callbackUrl?: string; registered?: string }> }) {
   const params = await searchParams;
-  const callbackUrl = params.callbackUrl?.startsWith("/") && !params.callbackUrl.startsWith("//")
-    ? params.callbackUrl
-    : "/onboarding";
+  const callbackUrl = getSafeInternalPath(params.callbackUrl, "/onboarding");
+  const registerUrl = `/register?callbackUrl=${encodeURIComponent(callbackUrl)}`;
   return (
     <Card>
       <CardHeader>
@@ -19,7 +19,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       </CardHeader>
       <CardContent>
         <LoginForm callbackUrl={callbackUrl} googleEnabled={Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET)} />
-        <p className="mt-6 text-center text-sm text-muted-foreground">New to HirePilot? <Link className="text-foreground underline underline-offset-4" href="/register">Create an account</Link></p>
+        <p className="mt-6 text-center text-sm text-muted-foreground">New to HirePilot? <Link className="text-foreground underline underline-offset-4" href={registerUrl}>Create an account</Link></p>
       </CardContent>
     </Card>
   );

@@ -17,6 +17,57 @@ import { enforcePlanLimit } from "@/modules/subscriptions/service";
 
 function hashToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
 
+function maskEmail(email: string) {
+  const [localPart, domain] = email.split("@");
+  if (!localPart || !domain) return "the invited email address";
+  const visibleLength = Math.min(2, localPart.length);
+  return `${localPart.slice(0, visibleLength)}${"*".repeat(Math.max(3, localPart.length - visibleLength))}@${domain}`;
+}
+
+export type TeamInvitationPreview = {
+  status: "pending" | "accepted" | "expired" | "revoked" | "invalid";
+  organizationName?: string;
+  role?: "admin" | "recruiter" | "reviewer";
+  invitedEmailHint?: string;
+  emailMatches: boolean;
+};
+
+export async function getTeamInvitationPreview(
+  token: string,
+  authenticatedEmail?: string | null,
+): Promise<TeamInvitationPreview> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    return { status: "invalid", emailMatches: false };
+  }
+
+  await connectToDatabase();
+  const invitation = await Invitation.findOne({ tokenHash: hashToken(token) })
+    .select("organizationId email role status expiresAt")
+    .lean();
+
+  if (!invitation) return { status: "invalid", emailMatches: false };
+
+  const organization = await Organization.findById(invitation.organizationId)
+    .select("name")
+    .lean();
+  if (!organization) return { status: "invalid", emailMatches: false };
+
+  const status =
+    invitation.status === "pending" && invitation.expiresAt <= new Date()
+      ? "expired"
+      : invitation.status;
+
+  return {
+    status,
+    organizationName: organization.name,
+    role: invitation.role,
+    invitedEmailHint: maskEmail(invitation.email),
+    emailMatches:
+      Boolean(authenticatedEmail) &&
+      authenticatedEmail?.toLowerCase() === invitation.email.toLowerCase(),
+  };
+}
+
 export async function listTeam(context: AuthorizationContext) {
   await connectToDatabase();
   await Invitation.updateMany({ organizationId: context.organizationId, status: "pending", expiresAt: { $lte: new Date() } }, { $set: { status: "expired" } });
@@ -53,13 +104,32 @@ export async function inviteTeamMember(context: AuthorizationContext, email: str
 export async function acceptTeamInvitation(token: string, userId: string) {
   if (!Types.ObjectId.isValid(userId)) throw new AppError("Sign in to accept this invitation.", 401, "UNAUTHENTICATED");
   await connectToDatabase();
-  const [invitation, user] = await Promise.all([Invitation.findOne({ tokenHash: hashToken(token), status: "pending" }).select("+tokenHash"), User.findById(userId)]);
-  if (!invitation || invitation.expiresAt <= new Date()) throw new AppError("This team invitation is invalid or expired.", 410, "INVITATION_EXPIRED");
+  const [invitation, user] = await Promise.all([
+    Invitation.findOne({ tokenHash: hashToken(token) }).select("+tokenHash"),
+    User.findById(userId),
+  ]);
+  if (
+    !invitation ||
+    invitation.status === "expired" ||
+    invitation.status === "revoked" ||
+    (invitation.status === "pending" && invitation.expiresAt <= new Date())
+  ) {
+    throw new AppError("This team invitation is invalid or expired.", 410, "INVITATION_EXPIRED");
+  }
   if (!user || user.email.toLowerCase() !== invitation.email) throw new AppError("Sign in with the email address that received this invitation.", 403, "INVITATION_EMAIL_MISMATCH");
   await Membership.findOneAndUpdate({ organizationId: invitation.organizationId, userId: user._id }, { $set: { role: invitation.role, status: "active", invitedBy: invitation.invitedBy, joinedAt: new Date() } }, { upsert: true, new: true, runValidators: true });
-  invitation.status = "accepted"; invitation.acceptedAt = new Date(); await invitation.save();
-  await AuditLog.create({ organizationId: invitation.organizationId, actorId: user._id, action: "team.invitation_accepted", resourceType: "invitation", resourceId: invitation._id, metadata: { role: invitation.role } });
-  return { organizationId: String(invitation.organizationId) };
+  const acceptedInvitation = await Invitation.findOneAndUpdate(
+    { _id: invitation._id, status: "pending" },
+    { $set: { status: "accepted", acceptedAt: new Date() } },
+    { new: true },
+  );
+  if (acceptedInvitation) {
+    await AuditLog.create({ organizationId: invitation.organizationId, actorId: user._id, action: "team.invitation_accepted", resourceType: "invitation", resourceId: invitation._id, metadata: { role: invitation.role } });
+  }
+  return {
+    organizationId: String(invitation.organizationId),
+    alreadyAccepted: invitation.status === "accepted",
+  };
 }
 
 export async function updateMembership(context: AuthorizationContext, membershipId: string, input: { role?: "admin" | "recruiter" | "reviewer"; status?: "active" | "suspended" }, ipAddress?: string) {
