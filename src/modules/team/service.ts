@@ -117,6 +117,26 @@ export async function acceptTeamInvitation(token: string, userId: string) {
     throw new AppError("This team invitation is invalid or expired.", 410, "INVITATION_EXPIRED");
   }
   if (!user || user.email.toLowerCase() !== invitation.email) throw new AppError("Sign in with the email address that received this invitation.", 403, "INVITATION_EMAIL_MISMATCH");
+
+  if (invitation.status === "accepted") {
+    const activeMembership = await Membership.exists({
+      organizationId: invitation.organizationId,
+      userId: user._id,
+      status: "active",
+    });
+    if (!activeMembership) {
+      throw new AppError(
+        "This invitation has already been used and cannot restore workspace access.",
+        410,
+        "INVITATION_ALREADY_USED",
+      );
+    }
+    return {
+      organizationId: String(invitation.organizationId),
+      alreadyAccepted: true,
+    };
+  }
+
   await Membership.findOneAndUpdate({ organizationId: invitation.organizationId, userId: user._id }, { $set: { role: invitation.role, status: "active", invitedBy: invitation.invitedBy, joinedAt: new Date() } }, { upsert: true, new: true, runValidators: true });
   const acceptedInvitation = await Invitation.findOneAndUpdate(
     { _id: invitation._id, status: "pending" },
@@ -128,7 +148,7 @@ export async function acceptTeamInvitation(token: string, userId: string) {
   }
   return {
     organizationId: String(invitation.organizationId),
-    alreadyAccepted: invitation.status === "accepted",
+    alreadyAccepted: false,
   };
 }
 
@@ -137,10 +157,106 @@ export async function updateMembership(context: AuthorizationContext, membership
   const membership = await Membership.findOne({ _id: membershipId, organizationId: context.organizationId });
   if (!membership) throw new AppError("Team member not found.", 404, "MEMBER_NOT_FOUND");
   if (membership.role === "owner") throw new AppError("The organization owner cannot be modified here.", 409, "OWNER_IMMUTABLE");
-  if (String(membership.userId) === context.userId && input.status === "suspended") throw new AppError("You cannot suspend your own membership.", 409, "CANNOT_SUSPEND_SELF");
+  if (
+    String(membership.userId) === context.userId &&
+    (input.status === "suspended" || input.role)
+  ) {
+    throw new AppError(
+      "You cannot change or suspend your own membership.",
+      409,
+      "CANNOT_MODIFY_SELF",
+    );
+  }
   if (input.role) membership.role = input.role;
   if (input.status) membership.status = input.status;
   await membership.save();
   await AuditLog.create({ organizationId: context.organizationId, actorId: context.userId, action: "team.membership_updated", resourceType: "membership", resourceId: membership._id, metadata: input, ipAddress });
   return { id: membership.id, role: membership.role, status: membership.status };
+}
+
+export async function removeMembership(
+  context: AuthorizationContext,
+  membershipId: string,
+  ipAddress?: string,
+) {
+  if (!Types.ObjectId.isValid(membershipId)) {
+    throw new AppError("Team member not found.", 404, "MEMBER_NOT_FOUND");
+  }
+
+  const membership = await Membership.findOne({
+    _id: membershipId,
+    organizationId: context.organizationId,
+  });
+  if (!membership) {
+    throw new AppError("Team member not found.", 404, "MEMBER_NOT_FOUND");
+  }
+  if (membership.role === "owner") {
+    throw new AppError(
+      "The workspace owner cannot be removed.",
+      409,
+      "OWNER_IMMUTABLE",
+    );
+  }
+  if (String(membership.userId) === context.userId) {
+    throw new AppError(
+      "You cannot remove your own membership. Ask another administrator.",
+      409,
+      "CANNOT_REMOVE_SELF",
+    );
+  }
+
+  await membership.deleteOne();
+  await AuditLog.create({
+    organizationId: context.organizationId,
+    actorId: context.userId,
+    action: "team.member_removed",
+    resourceType: "membership",
+    resourceId: membership._id,
+    metadata: {
+      removedUserId: String(membership.userId),
+      previousRole: membership.role,
+    },
+    ipAddress,
+  });
+
+  return { id: membershipId, removed: true };
+}
+
+export async function revokeTeamInvitation(
+  context: AuthorizationContext,
+  invitationId: string,
+  ipAddress?: string,
+) {
+  if (!Types.ObjectId.isValid(invitationId)) {
+    throw new AppError("Invitation not found.", 404, "INVITATION_NOT_FOUND");
+  }
+
+  const invitation = await Invitation.findOneAndUpdate(
+    {
+      _id: invitationId,
+      organizationId: context.organizationId,
+      status: "pending",
+    },
+    { $set: { status: "revoked" } },
+    { new: true },
+  );
+  if (!invitation) {
+    throw new AppError(
+      "Only a pending invitation can be cancelled.",
+      409,
+      "INVITATION_NOT_PENDING",
+    );
+  }
+
+  await AuditLog.create({
+    organizationId: context.organizationId,
+    actorId: context.userId,
+    action: "team.invitation_revoked",
+    resourceType: "invitation",
+    resourceId: invitation._id,
+    metadata: { email: invitation.email, role: invitation.role },
+    ipAddress,
+  });
+
+  return { id: invitationId, status: invitation.status };
 }
