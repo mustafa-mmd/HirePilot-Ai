@@ -32,6 +32,7 @@ export const integrityEventInputSchema = z.object({
   metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).default({}),
 });
 export const completeAttemptSchema = z.object({ token: invitationTokenSchema, sessionId: browserSessionSchema });
+export const cancelAttemptSchema = completeAttemptSchema;
 export const mediaSignatureSchema = z.object({ token: invitationTokenSchema, sessionId: browserSessionSchema, questionId: z.string().regex(/^[a-f\d]{24}$/i), kind: z.enum(ASSESSMENT_MEDIA_KINDS) });
 export const integrityMediaCompleteSchema = mediaSignatureSchema.extend({ asset: z.object({ url: z.url(), publicId: z.string().max(500), resourceType: z.enum(["image", "video", "raw"]), format: z.string().max(40), bytes: z.number().int().positive(), duration: z.number().nonnegative().optional() }) });
 export const codeExecutionSchema = z.object({ token: invitationTokenSchema, sessionId: browserSessionSchema, questionId: z.string().regex(/^[a-f\d]{24}$/i), language: z.string().trim().min(1).max(80), sourceCode: z.string().min(1).max(100_000), stdin: z.string().max(10_000).default(""), submit: z.boolean().default(false) });

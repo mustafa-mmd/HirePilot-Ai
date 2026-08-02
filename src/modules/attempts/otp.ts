@@ -5,6 +5,7 @@ import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { connectToDatabase } from "@/lib/database";
 import { AppError } from "@/lib/errors";
 import { AssessmentInvitation } from "@/models/assessment-invitation.model";
+import { AssessmentAttempt } from "@/models/assessment-attempt.model";
 import { AssessmentTemplate } from "@/models/assessment-template.model";
 import { Candidate } from "@/models/candidate.model";
 import { Notification } from "@/models/notification.model";
@@ -47,7 +48,21 @@ async function invitationFromToken(token: string, withOtp = false) {
     await invitation.save();
     throw new AppError("This assessment invitation has expired.", 410, "INVITATION_EXPIRED");
   }
-  if (["completed", "expired"].includes(invitation.status)) throw new AppError("This assessment invitation is no longer active.", 409, "INVITATION_NOT_ACTIVE");
+  if (invitation.status === "completed") {
+    const submittedAttempts = await AssessmentAttempt.countDocuments({
+      invitationId: invitation._id,
+      status: "completed",
+    });
+    if (submittedAttempts >= invitation.maximumAttempts) {
+      throw new AppError("The maximum number of submitted attempts has been reached.", 409, "MAXIMUM_ATTEMPTS_REACHED");
+    }
+
+    // Repair invitations written by the previous one-submission lifecycle.
+    invitation.status = "opened";
+    invitation.completedAt = undefined;
+    await invitation.save();
+  }
+  if (invitation.status === "expired") throw new AppError("This assessment invitation is no longer active.", 409, "INVITATION_NOT_ACTIVE");
   return invitation;
 }
 

@@ -44,7 +44,7 @@ export const AUTO_GRADABLE_QUESTION_TYPES: ReadonlySet<QuestionType> = new Set([
   "true_false",
 ]);
 
-export const ATTEMPT_STATUSES = ["in_progress", "completed", "expired"] as const;
+export const ATTEMPT_STATUSES = ["in_progress", "completed", "expired", "cancelled"] as const;
 export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number];
 
 export const ANSWER_STATUSES = ["draft", "submitted"] as const;
@@ -65,6 +65,7 @@ export const INTEGRITY_EVENT_TYPES = [
   "multiple_session_detected",
   "question_submitted",
   "assessment_completed",
+  "attempt_cancelled",
   "identity_captured",
   "snapshot_captured",
   "recording_uploaded",

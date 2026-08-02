@@ -117,7 +117,7 @@ export default async function AssessmentInstructionsPage({
                 <span className="block text-xs text-muted-foreground">
                   Maximum attempts
                 </span>
-                <span className="font-mono">{data.maximumAttempts}</span>
+                <span className="font-mono">{data.submittedAttempts} of {data.maximumAttempts} submitted</span>
               </p>
             </div>
           </CardContent>
@@ -147,6 +147,8 @@ export default async function AssessmentInstructionsPage({
               availableFrom={data.startDeadline}
               expiresAt={data.expiresAt}
               serverNow={data.serverNow}
+              submittedAttempts={data.submittedAttempts}
+              maximumAttempts={data.maximumAttempts}
             />
           </CardContent>
         </Card>

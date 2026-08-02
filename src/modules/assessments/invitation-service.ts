@@ -5,6 +5,7 @@ import { Types } from "mongoose";
 import { connectToDatabase } from "@/lib/database";
 import { AppError } from "@/lib/errors";
 import { Application } from "@/models/application.model";
+import { AssessmentAttempt } from "@/models/assessment-attempt.model";
 import { AssessmentInvitation } from "@/models/assessment-invitation.model";
 import { AssessmentTemplate } from "@/models/assessment-template.model";
 import { AuditLog } from "@/models/audit-log.model";
@@ -121,6 +122,15 @@ export async function getPublicAssessmentInstructions(token: string) {
   }).select("+tokenHash");
   if (!invitation) throw new AppError("Assessment invitation not found.", 404, "INVITATION_NOT_FOUND");
   const now = new Date();
+  const submittedAttempts = await AssessmentAttempt.countDocuments({
+    invitationId: invitation._id,
+    status: "completed",
+  });
+  if (invitation.status === "completed" && submittedAttempts < invitation.maximumAttempts) {
+    invitation.status = "opened";
+    invitation.completedAt = undefined;
+    await invitation.save();
+  }
   const windowState = getAssessmentInvitationWindowState(invitation.startDeadline, invitation.expiresAt, now);
   if (["invited", "opened"].includes(invitation.status) && windowState === "expired") {
     invitation.status = "expired";
@@ -135,7 +145,7 @@ export async function getPublicAssessmentInstructions(token: string) {
   const job = application ? await Job.findOne({ _id: application.jobId, organizationId: invitation.organizationId }).select("title") : null;
   if (!template || !candidate || !job || !organization) throw new AppError("Assessment invitation is incomplete.", 409, "INVITATION_DATA_INCOMPLETE");
   const privacyDetails = `${organization.branding.assessmentSupportMessage ?? "Contact the recruiting team if you need an accommodation or want to challenge an AI-assisted result."}\nRetention period: ${organization.retentionDays ?? 365} days.${organization.privacyContactEmail ? ` Privacy and accommodation contact: ${organization.privacyContactEmail}.` : ""}`;
-  return { assessmentTitle: template.title, assessmentDescription: template.description, candidateName: candidate.fullName, jobTitle: job.title, organizationName: organization.name, instructions: `${invitation.candidateInstructions}\n\nPrivacy, accommodation, and challenge process\n${privacyDetails}`, monitoringLevel: invitation.monitoringLevel, duration: invitation.assessmentDuration, questionCount: template.questionIds.length, totalPoints: template.totalPoints, maximumAttempts: invitation.maximumAttempts, startDeadline: invitation.startDeadline.toISOString(), expiresAt: invitation.expiresAt.toISOString(), serverNow: now.toISOString(), windowState, status: invitation.status };
+  return { assessmentTitle: template.title, assessmentDescription: template.description, candidateName: candidate.fullName, jobTitle: job.title, organizationName: organization.name, instructions: `${invitation.candidateInstructions}\n\nPrivacy, accommodation, and challenge process\n${privacyDetails}`, monitoringLevel: invitation.monitoringLevel, duration: invitation.assessmentDuration, questionCount: template.questionIds.length, totalPoints: template.totalPoints, maximumAttempts: invitation.maximumAttempts, submittedAttempts, attemptsRemaining: Math.max(0, invitation.maximumAttempts - submittedAttempts), startDeadline: invitation.startDeadline.toISOString(), expiresAt: invitation.expiresAt.toISOString(), serverNow: now.toISOString(), windowState, status: invitation.status };
 }
 
 export async function markInvitationOpened(token: string) {

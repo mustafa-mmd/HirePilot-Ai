@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assessmentInvitationHtml,
+  assessmentInvitationText,
   assessmentReminderHtml,
 } from "@/emails/assessment-invitation";
 
@@ -10,6 +11,13 @@ describe("assessment invitation email", () => {
     const html = assessmentInvitationHtml({ candidateName: "<script>alert(1)</script>", assessmentTitle: "Frontend", jobTitle: "Engineer", organizationName: "Acme", assessmentUrl: "https://example.com/assessment/token", availableFrom: "July 20", expiresAt: "July 22", duration: 30 });
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
+    expect(html).toContain("Open Assessment");
+    expect(html).toContain("https://example.com/assessment/token");
+  });
+
+  it("includes a plain-text fallback URL in initial invitations", () => {
+    const text = assessmentInvitationText({ candidateName: "Candidate", assessmentTitle: "Frontend", jobTitle: "Engineer", organizationName: "Acme", assessmentUrl: "https://example.com/assessment/token", availableFrom: "July 20", expiresAt: "July 22", duration: 30 });
+    expect(text).toContain("Open Assessment:\nhttps://example.com/assessment/token");
   });
 
   it("includes a secure assessment link in reminders", () => {
@@ -23,7 +31,7 @@ describe("assessment invitation email", () => {
       expiresAt: "July 22",
     });
 
-    expect(html).toContain("Open assessment");
+    expect(html).toContain("Open Assessment");
     expect(html).toContain(
       "https://example.com/assessment/reminder-token?x=1&amp;y=2",
     );

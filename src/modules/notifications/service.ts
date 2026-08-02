@@ -3,7 +3,7 @@ import "server-only";
 import nodemailer, { type Transporter } from "nodemailer";
 
 import { applicationConfirmationHtml } from "@/emails/application-confirmation";
-import { assessmentInvitationHtml, assessmentReminderHtml } from "@/emails/assessment-invitation";
+import { assessmentInvitationHtml, assessmentInvitationText, assessmentReminderHtml, assessmentReminderText } from "@/emails/assessment-invitation";
 import { assessmentOtpHtml } from "@/emails/assessment-otp";
 import { teamInvitationHtml } from "@/emails/team-invitation";
 import { connectToDatabase } from "@/lib/database";
@@ -135,6 +135,7 @@ export async function deliverAssessmentInvitation(
       to: data.email,
       subject: `Assessment invitation — ${data.jobTitle}`,
       html: assessmentInvitationHtml(data),
+      text: assessmentInvitationText(data),
       headers: {
         "X-HirePilot-Delivery-Key": `assessment-invitation-${data.invitationId}-${data.deliveryKey}`,
       },
@@ -191,6 +192,7 @@ export async function deliverAssessmentReminder(
       to: data.email,
       subject: `Reminder: assessment for ${data.jobTitle}`,
       html: assessmentReminderHtml(data),
+      text: assessmentReminderText(data),
       headers: {
         "X-HirePilot-Delivery-Key": `assessment-reminder-${data.invitationId}-${data.reminderNumber}`,
       },

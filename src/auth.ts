@@ -42,14 +42,21 @@ const providers: NextAuthConfig["providers"] = [
   }),
 ];
 
+// Keep recruiter sessions durable across browser restarts and serverless cold
+// starts. Auth.js defaults have changed between beta releases, so make both the
+// JWT lifetime and the session cookie lifetime explicit.
+export const AUTH_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
 if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
   providers.push(Google);
 }
 
 export const authConfig = {
+  secret: process.env.AUTH_SECRET,
   providers,
   pages: { signIn: "/login" },
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: AUTH_SESSION_MAX_AGE_SECONDS },
+  jwt: { maxAge: AUTH_SESSION_MAX_AGE_SECONDS },
   trustHost: true,
   callbacks: {
     async signIn({ user, account }) {

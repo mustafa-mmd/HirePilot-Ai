@@ -59,11 +59,29 @@ async function finalizeAttempt(attempt: AttemptDocument, status: "completed" | "
   attempt.totalScore = totals[0]?.score ?? 0;
   await attempt.save();
   if (status === "completed") {
+    const submittedAttempts = await AssessmentAttempt.countDocuments({
+      invitationId: attempt.invitationId,
+      status: "completed",
+    });
+    const invitation = await AssessmentInvitation.findOne({
+      _id: attempt.invitationId,
+      organizationId: attempt.organizationId,
+    }).select("maximumAttempts");
+    const maximumReached = Boolean(invitation && submittedAttempts >= invitation.maximumAttempts);
     await Promise.all([
-      AssessmentInvitation.updateOne({ _id: attempt.invitationId, organizationId: attempt.organizationId }, { $set: { status: "completed", completedAt: now } }),
+      AssessmentInvitation.updateOne(
+        { _id: attempt.invitationId, organizationId: attempt.organizationId },
+        maximumReached
+          ? { $set: { status: "completed", completedAt: now } }
+          : { $set: { status: "opened" }, $unset: { completedAt: 1 } },
+      ),
       Application.updateOne({ _id: attempt.applicationId, organizationId: attempt.organizationId }, { $set: { stage: "assessment_completed" } }),
     ]);
-    await addEvent(attempt, "assessment_completed");
+    await addEvent(attempt, "assessment_completed", undefined, {
+      submittedAttempts,
+      maximumAttempts: invitation?.maximumAttempts,
+      maximumReached,
+    });
   }
 }
 
@@ -100,12 +118,34 @@ async function synchronizeDeadlines(attempt: AttemptDocument) {
     if (attempt.currentQuestionIndex < attempt.questions.length) attempt.questions[attempt.currentQuestionIndex].startedAt = now;
     await attempt.save();
   }
-  if (attempt.currentQuestionIndex >= attempt.questions.length) await finalizeAttempt(attempt, "completed");
+  // A timeout is not a successful submission and must not consume one of the
+  // invitation's submitted-attempt allowances.
+  if (attempt.currentQuestionIndex >= attempt.questions.length) await finalizeAttempt(attempt, "expired");
 }
 
 async function serializeSession(attempt: AttemptDocument) {
   await synchronizeDeadlines(attempt);
-  if (attempt.status !== "in_progress") return { state: attempt.status, attemptId: attempt.id, totalScore: attempt.totalScore ?? 0, maximumScore: attempt.maximumScore, submittedAt: attempt.submittedAt?.toISOString() };
+  if (attempt.status !== "in_progress") {
+    const invitation = await AssessmentInvitation.findOne({
+      _id: attempt.invitationId,
+      organizationId: attempt.organizationId,
+    }).select("maximumAttempts").lean();
+    const submittedAttempts = await AssessmentAttempt.countDocuments({
+      invitationId: attempt.invitationId,
+      status: "completed",
+    });
+    const maximumAttempts = invitation?.maximumAttempts ?? submittedAttempts;
+    return {
+      state: attempt.status,
+      attemptId: attempt.id,
+      totalScore: attempt.totalScore ?? 0,
+      maximumScore: attempt.maximumScore,
+      submittedAt: attempt.submittedAt?.toISOString(),
+      submittedAttempts,
+      maximumAttempts,
+      attemptsRemaining: Math.max(0, maximumAttempts - submittedAttempts),
+    };
+  }
   const state = attempt.questions[attempt.currentQuestionIndex];
   const question = await Question.findOne({ _id: state.questionId, organizationId: attempt.organizationId }).lean();
   if (!question || !state.startedAt) throw new AppError("The current question is unavailable.", 409, "QUESTION_UNAVAILABLE");
@@ -128,7 +168,7 @@ async function serializeSession(attempt: AttemptDocument) {
     question: {
       id: String(question._id), type: question.type, title: question.title, description: question.description, category: question.category,
       difficulty: question.difficulty, points: question.points, preparationTime: question.preparationTime, timeLimit: question.timeLimit,
-      required: question.required, options, codingConfig: { language: question.codingConfig.language, allowedLanguages: question.codingConfig.allowedLanguages ?? [question.codingConfig.language], starterCode: question.codingConfig.starterCode, exampleTests: question.codingConfig.exampleTests ?? [], runtimeLimitMs: question.codingConfig.runtimeLimitMs ?? 3_000, memoryLimitKb: question.codingConfig.memoryLimitKb ?? 128_000 },
+      required: question.required, options, codingConfig: { language: question.codingConfig.language, allowedLanguages: question.codingConfig.allowedLanguages ?? [question.codingConfig.language], starterCode: question.codingConfig.starterCode, exampleTests: question.codingConfig.exampleTests ?? [], hiddenTestsConfigured: Boolean(question.codingConfig.hiddenTests?.length), runtimeLimitMs: question.codingConfig.runtimeLimitMs ?? 3_000, memoryLimitKb: question.codingConfig.memoryLimitKb ?? 128_000 },
       startedAt: state.startedAt.toISOString(), preparationEndsAt: new Date(state.startedAt.getTime() + question.preparationTime * 1_000).toISOString(), expiresAt: questionDeadline.toISOString(),
     },
     answer: answer ? { selectedOptions: answer.selectedOptions, text: answer.text, coding: answer.coding, media: answer.media, status: answer.status, updatedAt: answer.updatedAt.toISOString() } : null,
@@ -183,12 +223,16 @@ export async function startAssessmentAttempt(input: StartAttemptInput, ipAddress
   if (ordered.length !== template.questionIds.length) throw new AppError("The assessment contains unavailable questions.", 409, "QUESTION_UNAVAILABLE");
   if (template.randomizationSettings.randomizeQuestionOrder) ordered = shuffle(ordered);
   if (template.randomizationSettings.questionLimit) ordered = ordered.slice(0, template.randomizationSettings.questionLimit);
-  const priorAttempts = await AssessmentAttempt.countDocuments({ invitationId: invitation._id });
-  if (priorAttempts >= invitation.maximumAttempts) throw new AppError("The maximum number of attempts has been reached.", 409, "MAXIMUM_ATTEMPTS_REACHED");
+  const [submittedAttempts, latest] = await Promise.all([
+    AssessmentAttempt.countDocuments({ invitationId: invitation._id, status: "completed" }),
+    latestAttempt(invitation._id),
+  ]);
+  if (submittedAttempts >= invitation.maximumAttempts) throw new AppError("The maximum number of submitted attempts has been reached.", 409, "MAXIMUM_ATTEMPTS_REACHED");
+  const attemptNumber = (latest?.attemptNumber ?? 0) + 1;
   try {
     const attempt = await AssessmentAttempt.create({
       organizationId: invitation.organizationId, invitationId: invitation._id, assessmentId: invitation.assessmentId,
-      applicationId: invitation.applicationId, candidateId: invitation.candidateId, attemptNumber: priorAttempts + 1, status: "in_progress",
+      applicationId: invitation.applicationId, candidateId: invitation.candidateId, attemptNumber, status: "in_progress",
       questions: ordered.map((question, index) => ({ questionId: question._id, optionOrder: question.randomizeAnswers ? shuffle(question.options.map((option) => option.id)) : question.options.map((option) => option.id), ...(index === 0 ? { startedAt: now } : {}) })),
       currentQuestionIndex: 0, startedAt: now, expiresAt: attemptExpiry(now, invitation.assessmentDuration, invitation.expiresAt), lastHeartbeatAt: now,
       activeSessionHash: hashSession(input.sessionId), systemCheck: { ...input.systemCheck, completedAt: now }, consent: { ...input.consent, acceptedAt: now, ipAddress },
@@ -197,7 +241,7 @@ export async function startAssessmentAttempt(input: StartAttemptInput, ipAddress
     await Promise.all([
       AssessmentInvitation.updateOne({ _id: invitation._id, organizationId: invitation.organizationId }, { $set: { status: "started", startedAt: invitation.startedAt ?? now } }),
       Application.updateOne({ _id: invitation.applicationId, organizationId: invitation.organizationId }, { $set: { stage: "assessment_in_progress" } }),
-      IntegrityEvent.create({ organizationId: invitation.organizationId, attemptId: attempt._id, invitationId: invitation._id, candidateId: invitation.candidateId, questionId: ordered[0]?._id, type: "attempt_started", occurredAt: now, metadata: { attemptNumber: priorAttempts + 1 } }),
+      IntegrityEvent.create({ organizationId: invitation.organizationId, attemptId: attempt._id, invitationId: invitation._id, candidateId: invitation.candidateId, questionId: ordered[0]?._id, type: "attempt_started", occurredAt: now, metadata: { attemptNumber, submittedAttempts } }),
     ]);
     const loaded = await AssessmentAttempt.findById(attempt._id).select("+activeSessionHash");
     if (!loaded) throw new AppError("Attempt could not be loaded.", 500, "ATTEMPT_LOAD_FAILED");
@@ -315,4 +359,41 @@ export async function completeAssessmentAttempt(token: string, sessionId: string
   if (attempt.questions.some((question) => !question.submittedAt)) throw new AppError("Submit every question before completing the assessment.", 409, "QUESTIONS_REMAINING");
   await finalizeAttempt(attempt, "completed");
   return { completed: true };
+}
+
+export async function cancelAssessmentAttempt(token: string, sessionId: string) {
+  const invitation = await requireVerifiedInvitation(token);
+  const attempt = await AssessmentAttempt.findOne({
+    invitationId: invitation._id,
+    status: "in_progress",
+  }).select("+activeSessionHash");
+  if (!attempt) return { cancelled: true };
+
+  await assertBrowserSession(attempt, sessionId);
+  attempt.status = "cancelled";
+  attempt.lastHeartbeatAt = new Date();
+  await attempt.save();
+
+  const submittedAttempts = await AssessmentAttempt.countDocuments({
+    invitationId: invitation._id,
+    status: "completed",
+  });
+  await Promise.all([
+    AssessmentInvitation.updateOne(
+      { _id: invitation._id, organizationId: invitation.organizationId },
+      { $set: { status: "opened" }, $unset: { completedAt: 1 } },
+    ),
+    Application.updateOne(
+      { _id: invitation.applicationId, organizationId: invitation.organizationId },
+      { $set: { stage: submittedAttempts > 0 ? "assessment_completed" : "assessment_invited" } },
+    ),
+    addEvent(attempt, "attempt_cancelled", undefined, { submittedAttempts }),
+  ]);
+
+  return {
+    cancelled: true,
+    submittedAttempts,
+    maximumAttempts: invitation.maximumAttempts,
+    attemptsRemaining: Math.max(0, invitation.maximumAttempts - submittedAttempts),
+  };
 }

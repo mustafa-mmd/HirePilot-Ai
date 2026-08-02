@@ -41,7 +41,9 @@ const assessmentAttemptSchema = new Schema<IAssessmentAttempt>({
   assessmentId: { type: Schema.Types.ObjectId, ref: "AssessmentTemplate", required: true },
   applicationId: { type: Schema.Types.ObjectId, ref: "Application", required: true },
   candidateId: { type: Schema.Types.ObjectId, ref: "Candidate", required: true },
-  attemptNumber: { type: Number, required: true, min: 1, max: 5 },
+  // This is a monotonic audit sequence, not the number of submitted attempts.
+  // Cancelled and expired runs remain available for integrity review.
+  attemptNumber: { type: Number, required: true, min: 1 },
   status: { type: String, enum: ATTEMPT_STATUSES, required: true, default: "in_progress" },
   questions: [{ _id: false, questionId: { type: Schema.Types.ObjectId, ref: "Question", required: true }, optionOrder: [{ type: String, maxlength: 80 }], startedAt: Date, submittedAt: Date }],
   currentQuestionIndex: { type: Number, required: true, min: 0, default: 0 },

@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Clock3, Cloud, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Clock3, Cloud, DoorOpen, RefreshCw, RotateCcw, ShieldAlert } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,8 +19,8 @@ import { IntegrityMonitor } from "@/modules/media/integrity-monitor";
 import type { AssessmentMediaAsset, AssessmentMediaKind } from "@/modules/media/types";
 import type { MonitoringLevel, QuestionType } from "@/modules/assessments/constants";
 
-type Question = { id: string; type: QuestionType; title: string; description: string; category: string; difficulty: string; points: number; preparationTime: number; timeLimit: number; required: boolean; options: Array<{ id: string; label: string }>; codingConfig: { language: string; allowedLanguages: string[]; starterCode: string; exampleTests: Array<{ input: string; expectedOutput: string }>; runtimeLimitMs: number; memoryLimitKb: number }; startedAt: string; preparationEndsAt: string; expiresAt: string };
-type Session = { state: "ready" | "in_progress" | "completed" | "expired"; attemptId?: string; serverNow?: string; attemptExpiresAt?: string; monitoringLevel?: MonitoringLevel; progress?: { current: number; total: number }; question?: Question; answer?: { selectedOptions: string[]; text: string; coding?: { language?: string; sourceCode?: string }; media?: { url?: string }; status: string }; totalScore?: number; maximumScore?: number };
+type Question = { id: string; type: QuestionType; title: string; description: string; category: string; difficulty: string; points: number; preparationTime: number; timeLimit: number; required: boolean; options: Array<{ id: string; label: string }>; codingConfig: { language: string; allowedLanguages: string[]; starterCode: string; exampleTests: Array<{ input: string; expectedOutput: string }>; hiddenTestsConfigured: boolean; runtimeLimitMs: number; memoryLimitKb: number }; startedAt: string; preparationEndsAt: string; expiresAt: string };
+type Session = { state: "ready" | "in_progress" | "completed" | "expired" | "cancelled"; attemptId?: string; serverNow?: string; attemptExpiresAt?: string; monitoringLevel?: MonitoringLevel; progress?: { current: number; total: number }; question?: Question; answer?: { selectedOptions: string[]; text: string; coding?: { language?: string; sourceCode?: string }; media?: { url?: string }; status: string }; totalScore?: number; maximumScore?: number; submittedAttempts?: number; maximumAttempts?: number; attemptsRemaining?: number };
 type Envelope = { success: boolean; data?: Session; error?: { message?: string } };
 
 function storageKey(token: string) { return `hirepilot-assessment-session:${token.slice(0, 16)}`; }
@@ -36,7 +37,9 @@ export function AttemptRunner({ token }: { token: string }) {
   const [media, setMedia] = useState<{ kind: AssessmentMediaKind; asset: AssessmentMediaAsset } | undefined>();
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
   const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [clockOffset, setClockOffset] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const currentQuestionRef = useRef<string | undefined>(undefined);
@@ -65,7 +68,7 @@ export function AttemptRunner({ token }: { token: string }) {
       .then((data) => { if (data.state === "ready") router.replace(`/assessment/${token}/setup`); else applySession(data); })
       .catch((caught) => { if (caught instanceof Error && caught.name !== "AbortError") setError(caught.message); });
     return () => controller.abort();
-  }, [applySession, router, sessionId, token]);
+  }, [applySession, reloadKey, router, sessionId, token]);
 
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1_000); return () => window.clearInterval(timer); }, []);
 
@@ -98,6 +101,23 @@ export function AttemptRunner({ token }: { token: string }) {
     finally { setBusy(false); }
   }, [applySession, busy, media, selectedLanguage, selectedOptions, session, sessionId, sourceCode, text, token]);
 
+  async function cancelAttempt() {
+    if (!sessionId || session?.state !== "in_progress") return;
+    setCancelBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/candidate-assessment/attempt", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, sessionId }) });
+      const result = await response.json() as { success: boolean; error?: { message?: string } };
+      if (!response.ok || !result.success) throw new Error(result.error?.message ?? "The attempt could not be cancelled.");
+      router.replace(`/assessment/${token}`);
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The attempt could not be cancelled.");
+    } finally {
+      setCancelBusy(false);
+    }
+  }
+
   useEffect(() => { if (!dirty || busy) return; const timer = window.setTimeout(() => void persist(false), 1_200); return () => window.clearTimeout(timer); }, [busy, dirty, persist]);
 
   const adjustedNow = now + clockOffset;
@@ -106,10 +126,10 @@ export function AttemptRunner({ token }: { token: string }) {
   const attemptRemaining = session?.attemptExpiresAt ? Math.max(0, Math.ceil((Date.parse(session.attemptExpiresAt) - adjustedNow) / 1_000)) : 0;
   useEffect(() => { if (session?.state !== "in_progress" || !session.question || questionRemaining !== 0 || busy) return; const timer = window.setTimeout(() => void persist(true), 0); return () => window.clearTimeout(timer); }, [busy, persist, questionRemaining, session]);
 
-  if (error && !session) return <Alert variant="destructive"><ShieldAlert /><AlertTitle>Assessment unavailable</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
+  if (error && !session) return <Alert variant="destructive"><ShieldAlert /><AlertTitle>Assessment unavailable</AlertTitle><AlertDescription><p>{error}</p><Button className="mt-4" type="button" variant="outline" onClick={() => { setError(""); setReloadKey((value) => value + 1); }}><RefreshCw />Retry loading</Button></AlertDescription></Alert>;
   if (!session) return <Card><CardContent className="flex items-center gap-3 py-10 text-muted-foreground"><Cloud className="size-5 animate-pulse" />Recovering your secure attempt...</CardContent></Card>;
-  if (session.state === "completed") return <Card><CardHeader><CheckCircle2 className="size-10 text-primary" /><CardTitle>Assessment submitted</CardTitle><CardDescription>Your responses are ready for human review. The recruiting team will contact you about next steps.</CardDescription></CardHeader></Card>;
-  if (session.state === "expired") return <Alert variant="destructive"><Clock3 /><AlertTitle>Attempt expired</AlertTitle><AlertDescription>The server closed this attempt when its allotted time ended. Contact the recruiting team if you experienced an exceptional issue.</AlertDescription></Alert>;
+  if (session.state === "completed") return <Card><CardHeader><CheckCircle2 className="size-10 text-primary" /><CardTitle>Assessment submitted</CardTitle><CardDescription>Your responses are ready for human review. {session.attemptsRemaining ? `You have ${session.attemptsRemaining} submitted attempt${session.attemptsRemaining === 1 ? "" : "s"} remaining.` : "You have reached the configured attempt limit."}</CardDescription></CardHeader>{session.attemptsRemaining ? <CardContent><Button onClick={() => router.push(`/assessment/${token}/setup`)}><RotateCcw />Start another attempt</Button></CardContent> : null}</Card>;
+  if (session.state === "expired" || session.state === "cancelled") return <Alert variant={session.state === "expired" ? "destructive" : "default"}>{session.state === "expired" ? <Clock3 /> : <DoorOpen />}<AlertTitle>{session.state === "expired" ? "Attempt expired" : "Attempt cancelled"}</AlertTitle><AlertDescription><p>{session.state === "expired" ? "The server closed this attempt when its allotted time ended. It did not consume a submitted attempt." : "This attempt was cancelled and did not consume a submitted attempt."}</p>{session.attemptsRemaining ? <Button className="mt-4" type="button" variant="outline" onClick={() => router.push(`/assessment/${token}/setup`)}><RotateCcw />Start again</Button> : null}</AlertDescription></Alert>;
   if (!session.question || !session.progress) return null;
 
   const question = session.question;
@@ -117,11 +137,11 @@ export function AttemptRunner({ token }: { token: string }) {
   const answerControl = ["single_choice", "multiple_choice", "true_false"].includes(question.type)
     ? <div className="space-y-3">{question.options.map((option) => question.type === "multiple_choice" ? <label key={option.id} className="flex cursor-pointer items-start gap-3 rounded-lg border p-4 hover:bg-accent"><Checkbox checked={selectedOptions.includes(option.id)} onCheckedChange={() => toggle(option.id)} disabled={preparationRemaining > 0 || busy} /><span>{option.label}</span></label> : <Button key={option.id} type="button" variant={selectedOptions.includes(option.id) ? "default" : "outline"} className="h-auto w-full justify-start whitespace-normal p-4 text-left" disabled={preparationRemaining > 0 || busy} onClick={() => toggle(option.id)}>{option.label}</Button>)}</div>
     : question.type === "coding"
-      ? <CodingEditor token={token} sessionId={sessionId} questionId={question.id} languages={question.codingConfig.allowedLanguages.length ? question.codingConfig.allowedLanguages : [question.codingConfig.language]} language={selectedLanguage || question.codingConfig.language} sourceCode={sourceCode} disabled={preparationRemaining > 0 || busy} exampleTests={question.codingConfig.exampleTests} onLanguageChange={(value) => { setSelectedLanguage(value); setDirty(true); }} onSourceChange={(value) => { setSourceCode(value); setDirty(true); }} />
+      ? <CodingEditor token={token} sessionId={sessionId} questionId={question.id} languages={question.codingConfig.allowedLanguages.length ? question.codingConfig.allowedLanguages : [question.codingConfig.language]} language={selectedLanguage || question.codingConfig.language} sourceCode={sourceCode} disabled={preparationRemaining > 0 || busy} exampleTests={question.codingConfig.exampleTests} hiddenTestsConfigured={question.codingConfig.hiddenTestsConfigured} onLanguageChange={(value) => { setSelectedLanguage(value); setDirty(true); }} onSourceChange={(value) => { setSourceCode(value); setDirty(true); }} />
       : ["video", "audio", "file_upload"].includes(question.type)
         ? <ResponseRecorder type={question.type as "video" | "audio" | "file_upload"} token={token} sessionId={sessionId} questionId={question.id} disabled={preparationRemaining > 0 || busy} existingUrl={session.answer?.media?.url} onUploaded={(value) => { setMedia(value); setDirty(true); }} />
       : <div className="space-y-2"><Label htmlFor="written-answer">Your response</Label><Textarea id="written-answer" className="min-h-56" value={text} disabled={preparationRemaining > 0 || busy} onChange={(event) => { setText(event.target.value); setDirty(true); }} /></div>;
   const responseControl = <><IntegrityMonitor token={token} sessionId={sessionId} questionId={question.id} monitoringLevel={session.monitoringLevel ?? "standard"} />{answerControl}</>;
 
-  return <div className="space-y-6">{error && <Alert variant="destructive"><AlertTitle>Save problem</AlertTitle><AlertDescription>{error} Your answer remains in this browser; retry before the timer ends.</AlertDescription></Alert>}<div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm text-muted-foreground">Question {session.progress.current} of {session.progress.total}</p><progress className="mt-2 h-2 w-64 accent-primary" value={session.progress.current} max={session.progress.total} /></div><div className="flex gap-3"><Badge variant={questionRemaining < 60 ? "destructive" : "outline"} className="font-mono">Question {formatTime(questionRemaining)}</Badge><Badge variant="outline" className="font-mono">Total {formatTime(attemptRemaining)}</Badge></div></div>{preparationRemaining > 0 && <Alert><Clock3 /><AlertTitle>Preparation time: {formatTime(preparationRemaining)}</AlertTitle><AlertDescription>Review the prompt. Response controls unlock when preparation time ends.</AlertDescription></Alert>}<Card><CardHeader><div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{question.category}</Badge><Badge variant="outline" className="capitalize">{question.difficulty}</Badge><Badge variant="outline">{question.points} points</Badge>{question.required && <Badge>Required</Badge>}</div><CardTitle className="pt-3">{question.title}</CardTitle><CardDescription className="whitespace-pre-wrap text-sm leading-6">{question.description}</CardDescription></CardHeader><CardContent className={cn("space-y-6", preparationRemaining > 0 && "opacity-70")}>{responseControl}<div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">{busy ? "Saving securely..." : dirty ? "Unsaved changes" : "Saved"}</p><Button disabled={busy || preparationRemaining > 0} onClick={() => void persist(true)}>{session.progress.current === session.progress.total ? "Submit final answer" : "Submit and continue"}</Button></div></CardContent></Card></div>;
+  return <div className="space-y-6">{error && <Alert variant="destructive"><AlertTitle>Save problem</AlertTitle><AlertDescription>{error} Your answer remains in this browser; retry before the timer ends.</AlertDescription></Alert>}<div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm text-muted-foreground">Question {session.progress.current} of {session.progress.total}</p><progress className="mt-2 h-2 w-64 max-w-full accent-primary" value={session.progress.current} max={session.progress.total} /></div><div className="flex flex-wrap gap-3"><Badge variant={questionRemaining < 60 ? "destructive" : "outline"} className="font-mono">Question {formatTime(questionRemaining)}</Badge><Badge variant="outline" className="font-mono">Total {formatTime(attemptRemaining)}</Badge></div></div>{preparationRemaining > 0 && <Alert><Clock3 /><AlertTitle>Preparation time: {formatTime(preparationRemaining)}</AlertTitle><AlertDescription>Review the prompt. Response controls unlock when preparation time ends.</AlertDescription></Alert>}<Card><CardHeader><div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{question.category}</Badge><Badge variant="outline" className="capitalize">{question.difficulty}</Badge><Badge variant="outline">{question.points} points</Badge>{question.required && <Badge>Required</Badge>}</div><CardTitle className="pt-3">{question.title}</CardTitle><CardDescription className="whitespace-pre-wrap text-sm leading-6">{question.description}</CardDescription></CardHeader><CardContent className={cn("space-y-6", preparationRemaining > 0 && "opacity-70")}>{responseControl}<div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2"><p className="text-xs text-muted-foreground">{busy ? "Saving securely..." : dirty ? "Unsaved changes" : "Saved"}</p><AlertDialog><AlertDialogTrigger asChild><Button type="button" variant="ghost" size="sm" disabled={busy || cancelBusy}><DoorOpen />Exit attempt</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Exit this attempt?</AlertDialogTitle><AlertDialogDescription>Your draft will be retained for audit, but this attempt will be cancelled and will not count toward the submitted-attempt limit. The timer cannot be resumed after cancellation.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Keep working</AlertDialogCancel><AlertDialogAction disabled={cancelBusy} onClick={() => void cancelAttempt()}>Cancel attempt</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></div><Button disabled={busy || cancelBusy || preparationRemaining > 0} onClick={() => void persist(true)}>{session.progress.current === session.progress.total ? "Submit final answer" : "Submit and continue"}</Button></div></CardContent></Card></div>;
 }
