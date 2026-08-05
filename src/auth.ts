@@ -53,10 +53,22 @@ if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
 
 export const authConfig = {
   secret: process.env.AUTH_SECRET,
+  useSecureCookies: process.env.NODE_ENV === "production",
   providers,
   pages: { signIn: "/login" },
   session: { strategy: "jwt", maxAge: AUTH_SESSION_MAX_AGE_SECONDS },
   jwt: { maxAge: AUTH_SESSION_MAX_AGE_SECONDS },
+  cookies: {
+    sessionToken: {
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
+      },
+    },
+  },
   trustHost: true,
   callbacks: {
     async signIn({ user, account }) {
